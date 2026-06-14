@@ -141,11 +141,20 @@ async def analyze_pdf(
     analysis_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     db.close()
 
+    # Возвращаем всё плоско — фронтенд ждёт indicators на верхнем уровне
     return {
         "success": True,
         "analysis_id": analysis_id,
         "found": len(indicators),
-        "result": ai_result,
+        "indicators": ai_result.get("indicators", []),
+        "summary": ai_result.get("summary", ""),
+        "attention_count": ai_result.get("attention_count", 0),
+        "ok_count": ai_result.get("ok_count", 0),
+        "patterns": ai_result.get("patterns", []),
+        "risks": ai_result.get("risks", []),
+        "protocol": ai_result.get("protocol", []),
+        "lifestyle": ai_result.get("lifestyle", {}),
+        "positive": ai_result.get("positive", ""),
     }
 
 @app.get("/api/analyses/{telegram_id}")
