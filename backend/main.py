@@ -297,10 +297,19 @@ async def analyze_pdf(
     indicators = parsed['indicators']
     raw_text   = parsed['raw_text']
 
+    # Если keyword-матчинг нашёл мало — пробуем AI-парсинг
+    if len(indicators) < 3 and raw_text:
+        try:
+            ai_parsed = await loop.run_in_executor(executor, lambda: ai_parse_pdf(raw_text))
+            if ai_parsed:
+                indicators = {**ai_parsed, **indicators}  # keyword-результаты приоритетнее
+        except Exception as e:
+            print(f"AI PDF parse error: {e}")
+
     if not indicators:
         return JSONResponse({
             "success": False,
-            "message": "Не удалось извлечь показатели из PDF. Попробуй PDF из Инвитро, Гемотест или Хеликс.",
+            "message": "Не удалось извлечь показатели из PDF. Попробуй загрузить другой файл или введи показатели вручную.",
         })
 
     # AI анализ с историей (в отдельном потоке чтобы не блокировать)
@@ -334,6 +343,95 @@ async def analyze_pdf(
         "lifestyle": ai_result.get("lifestyle", {}),
         "positive": ai_result.get("positive", ""),
     }
+
+def ai_parse_pdf(raw_text: str) -> dict:
+    """Используем Gemini для извлечения показателей из PDF любой лаборатории."""
+    import re as _re
+    from ai_analysis import get_client
+    keys_hint = (
+        "hemoglobin, hematocrit, platelets, esr, leukocytes, erythrocytes, glucose, "
+        "cholesterol, hdl, ldl, triglycerides, insulin, hba1c, ferritin, iron, tibc, "
+        "transferrin, vitamin_d, b12, folate, tsh, t4_free, t3_free, tpo_ab, crp, "
+        "alt, ast, ggt, bilirubin, albumin, creatinine, urea, uric_acid, cortisol, "
+        "testosterone, estradiol, progesterone, magnesium, calcium, potassium, sodium, "
+        "phosphorus, zinc, mcv, mch, mchc, rdw, neutrophils, lymphocytes, monocytes, "
+        "eosinophils, basophils, dhea, igf1, homocysteine, prolactin, omega3_index"
+    )
+    prompt = f"""Ты — парсер лабораторных анализов. Из текста ниже извлеки числовые значения показателей крови.
+
+Используй ТОЛЬКО эти ключи (английские, snake_case):
+{keys_hint}
+
+Правила:
+- Извлекай только числа которые явно присутствуют в тексте
+- Если показатель указан в другой единице (например г/л вместо г/дл) — пересчитай
+- Не придумывай значения
+- Верни ТОЛЬКО валидный JSON: {{"ключ": число, ...}}
+
+Текст анализов:
+{raw_text[:4000]}"""
+
+    client = get_client()
+    resp = client.models.generate_content(model='models/gemini-2.5-flash', contents=prompt)
+    text = resp.text.strip()
+    m = _re.search(r'\{[^{}]*\}', text, _re.DOTALL)
+    if m:
+        data = json.loads(m.group())
+        return {k: float(v) for k, v in data.items() if isinstance(v, (int, float)) and v > 0}
+    return {}
+
+
+@app.post("/api/analyze-manual")
+async def analyze_manual(
+    telegram_id: str = Form(...),
+    name: str = Form(...),
+    gender: str = Form(...),
+    age: int = Form(...),
+    indicators: str = Form(...),  # JSON-строка
+):
+    """Анализ вручную введённых показателей."""
+    try:
+        inds = json.loads(indicators)
+        inds = {k: float(v) for k, v in inds.items() if v}
+    except Exception:
+        raise HTTPException(400, "Invalid indicators JSON")
+
+    if not inds:
+        raise HTTPException(400, "No indicators provided")
+
+    loop = asyncio.get_event_loop()
+    history = await loop.run_in_executor(executor, get_history_summary, telegram_id)
+
+    ai_result = await loop.run_in_executor(
+        executor,
+        lambda: analyze_with_ai(inds, gender, age, name, "", history)
+    )
+
+    user = get_or_create_user(telegram_id, name)
+    db = get_db()
+    db.execute(
+        "INSERT INTO analyses (user_id, pdf_path, indicators, ai_result) VALUES (?,?,?,?)",
+        (user['id'], 'manual', json.dumps(inds), json.dumps(ai_result))
+    )
+    db.commit()
+    analysis_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    db.close()
+
+    return {
+        "success": True,
+        "analysis_id": analysis_id,
+        "found": len(inds),
+        "indicators": ai_result.get("indicators", []),
+        "summary": ai_result.get("summary", ""),
+        "attention_count": ai_result.get("attention_count", 0),
+        "ok_count": ai_result.get("ok_count", 0),
+        "patterns": ai_result.get("patterns", []),
+        "risks": ai_result.get("risks", []),
+        "protocol": ai_result.get("protocol", []),
+        "lifestyle": ai_result.get("lifestyle", {}),
+        "positive": ai_result.get("positive", ""),
+    }
+
 
 @app.get("/api/analyses/{telegram_id}")
 def get_analyses(telegram_id: str):

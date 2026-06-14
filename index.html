@@ -1288,17 +1288,44 @@ async function uploadPdf(input) {
   }
 }
 
-function saveInds() {
+async function saveInds() {
   INDS.forEach(ind=>{
     const v = document.getElementById(`ii-${ind.k}`)?.value;
-    if (v) S.inds[ind.k]=v; else delete S.inds[ind.k];
+    if (v) S.inds[ind.k]=parseFloat(v); else delete S.inds[ind.k];
   });
   S.updatedAt = new Date().toISOString();
   save();
   if (window.Telegram?.WebApp?.HapticFeedback)
     Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-  showToast('Анализы сохранены ✓');
-  setTimeout(()=>go('home'),800);
+
+  const filled = Object.keys(S.inds);
+  if (!filled.length) { showToast('Введи хотя бы один показатель'); return; }
+
+  // Отправляем на AI-анализ
+  showToast('Анализирую показатели…');
+  const p = S.profile || {};
+  try {
+    const fd = new FormData();
+    fd.append('telegram_id', S.telegramId || '0');
+    fd.append('name',   p.name   || 'Пациент');
+    fd.append('gender', p.gender || 'm');
+    fd.append('age',    p.age    || 25);
+    fd.append('indicators', JSON.stringify(S.inds));
+    const res = await fetch(`${API_URL}/api/analyze-manual`, { method:'POST', body:fd });
+    const data = await res.json();
+    if (data.success) {
+      S.lastAnalysis = data;
+      save();
+      showToast('Разбор готов ✓');
+      setTimeout(()=>go('analysis'), 800);
+    } else {
+      showToast('Ошибка анализа');
+      setTimeout(()=>go('home'), 800);
+    }
+  } catch(e) {
+    showToast('Сохранено локально');
+    setTimeout(()=>go('home'), 800);
+  }
 }
 
 // ── AI TEXT ──
