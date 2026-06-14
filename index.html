@@ -380,10 +380,17 @@ body {
   z-index:200;
 }
 .bnav.show { display:grid; }
-.ni { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; padding:4px 0; }
-.ni-ic { font-size:22px; }
-.ni-lbl { font-size:10px; font-weight:500; color:var(--text2); }
-.ni.on .ni-lbl { color:var(--accent); }
+.ni { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; padding:6px 0; color:var(--text2); }
+.ni-svg { width:22px; height:22px; color:var(--text2); transition:color .2s; }
+.ni-lbl { font-size:10px; font-weight:500; color:inherit; transition:color .2s; }
+.ni.on { color:var(--accent); }
+.ni.on .ni-svg { color:var(--accent); }
+/* Центральная AI кнопка */
+.ni-ai-wrap { width:46px; height:46px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; margin-top:-14px; box-shadow:0 4px 14px rgba(46,155,143,.45); transition:transform .15s; }
+.ni-ai-wrap .ni-svg { width:22px; height:22px; color:white; }
+#ni-ai { color:var(--accent); }
+#ni-ai .ni-lbl { color:var(--accent); font-weight:700; }
+#ni-ai.on .ni-ai-wrap { transform:scale(1.08); }
 
 /* ── EMPTY STATE ── */
 .empty {
@@ -665,7 +672,7 @@ body {
 <!-- ══ AI CHAT ══ -->
 <div id="ai-chat" class="screen">
   <div class="chat-hdr">
-    <button class="back-btn" onclick="go('analysis')" style="color:var(--accent)">‹ Назад</button>
+    <button class="back-btn" onclick="go('home')" style="color:white;opacity:.85">‹ Назад</button>
     <div style="display:flex;align-items:center;gap:8px">
       <div class="chat-avatar">M</div>
       <div>
@@ -757,15 +764,17 @@ body {
 <!-- ══ BOTTOM NAV ══ -->
 <nav class="bnav" id="bnav">
   <div class="ni on" id="ni-home" onclick="go('home')">
-    <span class="ni-ic">🏠</span>
+    <svg class="ni-svg" viewBox="0 0 24 24" fill="none"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 21V12h6v9" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
     <span class="ni-lbl">Главная</span>
   </div>
-  <div class="ni" id="ni-ind" onclick="go('indicators')">
-    <span class="ni-ic">🩸</span>
-    <span class="ni-lbl">Анализы</span>
+  <div class="ni" id="ni-ai" onclick="openChat()">
+    <div class="ni-ai-wrap">
+      <svg class="ni-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><ellipse cx="12" cy="12" rx="4" ry="9" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="1.5"/></svg>
+    </div>
+    <span class="ni-lbl">Meridian AI</span>
   </div>
   <div class="ni" id="ni-prof" onclick="go('profile')">
-    <span class="ni-ic">👤</span>
+    <svg class="ni-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     <span class="ni-lbl">Профиль</span>
   </div>
 </nav>
@@ -969,12 +978,12 @@ function save() { localStorage.setItem('mrd', JSON.stringify(S)); }
 function go(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const navScreens = ['home','indicators','profile','ai-chat'];
+  const navScreens = ['home','indicators','analysis','share-screen','profile','ai-chat'];
   document.getElementById('bnav').classList.toggle('show', navScreens.includes(id));
   document.querySelectorAll('.ni').forEach(n => n.classList.remove('on'));
-  if (id==='home')       document.getElementById('ni-home').classList.add('on');
-  if (id==='indicators') document.getElementById('ni-ind').classList.add('on');
-  if (id==='profile')    document.getElementById('ni-prof').classList.add('on');
+  if (id==='home')                          document.getElementById('ni-home').classList.add('on');
+  if (id==='ai-chat')                       document.getElementById('ni-ai').classList.add('on');
+  if (id==='profile')                       document.getElementById('ni-prof').classList.add('on');
   if (id==='home')        refreshHome();
   if (id==='analysis')    refreshAna();
   if (id==='share-screen')refreshShare();
