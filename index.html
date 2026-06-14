@@ -722,6 +722,16 @@ body {
 // ── DATA ──
 let S = { profile: null, inds: {}, updatedAt: null };
 
+// Мгновенно прячем splash если уже есть профиль (до рендера)
+(function() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('mrd') || '{}');
+    if (saved.profile) {
+      document.getElementById('splash').classList.remove('active');
+    }
+  } catch(e) {}
+})();
+
 const INDS = [
   { k:'hemoglobin',   n:'Гемоглобин',          u:'г/дл',      g:'Кровь',       ref:{m:[13.2,17.5],f:[11.7,15.5]}, opt:{m:[14,17],f:[12.5,15]} },
   { k:'hematocrit',   n:'Гематокрит',           u:'%',         g:'Кровь',       ref:{m:[38.3,48.6],f:[35.5,44.9]} },
@@ -760,17 +770,25 @@ function status(ind, val, sex) {
 // ── API ──
 const API_URL = 'https://meridian-backend.railway.app'; // будет обновлён после деплоя на Railway
 
-async function apiSaveUser(tgUser) {
+async function apiSaveProfile(telegramId, profile) {
   try {
-    await fetch(`${API_URL}/api/user/save`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        telegram_id: tgUser.id,
-        name: tgUser.first_name + (tgUser.last_name ? ' '+tgUser.last_name : ''),
-        username: tgUser.username||null,
-      })
-    });
-  } catch(e) { console.warn('API offline, работаем локально'); }
+    const fd = new FormData();
+    fd.append('telegram_id', telegramId);
+    fd.append('name',   profile.name   || '');
+    fd.append('gender', profile.gender || 'm');
+    fd.append('age',    profile.age    || 25);
+    if (profile.height) fd.append('height', profile.height);
+    if (profile.weight) fd.append('weight', profile.weight);
+    await fetch(`${API_URL}/api/user/save`, { method: 'POST', body: fd });
+  } catch(e) { console.warn('API offline'); }
+}
+
+async function apiLoadProfile(telegramId) {
+  try {
+    const res = await fetch(`${API_URL}/api/user/${telegramId}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(e) { return null; }
 }
 
 async function apiLoadAnalyses(telegramId) {
@@ -816,24 +834,34 @@ document.addEventListener('DOMContentLoaded', async () => {
   const raw = localStorage.getItem('mrd');
   if (raw) { try { S = JSON.parse(raw); } catch(e){} }
 
-  // Telegram авторизация
   const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
   if (tgUser) {
-    S.telegramId = tgUser.id;
-    // Автозаполнение профиля из Telegram если нет своего
-    if (!S.profile) {
-      S.profile = {
-        name: tgUser.first_name + (tgUser.last_name ? ' '+tgUser.last_name : ''),
-        gender: 'm', age: 25, height: null, weight: null
-      };
-    }
+    S.telegramId = String(tgUser.id);
     save();
-    apiSaveUser(tgUser);
-    // Синхронизируем последний анализ из бэкенда (PDF, отправленный боту)
-    syncLastAnalysis(tgUser.id).then(()=>{ if(S.profile) refreshHome(); });
+
+    // Если нет локального профиля — пробуем загрузить с сервера
+    if (!S.profile) {
+      const serverProfile = await apiLoadProfile(S.telegramId);
+      if (serverProfile && serverProfile.name) {
+        S.profile = {
+          name:   serverProfile.name,
+          gender: serverProfile.gender || 'm',
+          age:    serverProfile.age    || 25,
+          height: serverProfile.height || null,
+          weight: serverProfile.weight || null,
+        };
+        save();
+      } else {
+        // Нет нигде — prefill имя из Telegram, онбординг спросит пол/возраст
+        S._tgName = tgUser.first_name + (tgUser.last_name ? ' '+tgUser.last_name : '');
+      }
+    }
+
+    // Синхронизируем анализы с бэкенда в фоне
+    syncLastAnalysis(S.telegramId).then(() => { if (S.profile) refreshHome(); });
   }
 
-  if (S.profile) go('home');
+  if (S.profile) { go('home'); } else { /* остаёмся на splash */ }
   buildForm();
 });
 
@@ -864,6 +892,9 @@ function goOnboarding() {
   go('onboarding');
   document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('active'));
   document.getElementById('ob1').classList.add('active');
+  // Prefill имя из Telegram
+  if (S._tgName && !document.getElementById('f-name').value)
+    document.getElementById('f-name').value = S._tgName;
 }
 
 function trySkip() { S.profile ? go('home') : goOnboarding(); }
@@ -900,6 +931,8 @@ function ob_finish() {
     weight: parseInt(document.getElementById('f-weight').value) || null,
   };
   save();
+  // Сохраняем профиль на сервер чтобы не вводить повторно
+  if (S.telegramId) apiSaveProfile(S.telegramId, S.profile);
   go('home');
 }
 
@@ -910,6 +943,7 @@ function editProfile() {
   document.getElementById('f-height').value = p.height|| '';
   document.getElementById('f-weight').value = p.weight|| '';
   selGender = p.gender;
+  pickGender(p.gender); // подсветить нужную кнопку
   goOnboarding();
 }
 
