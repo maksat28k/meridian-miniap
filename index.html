@@ -988,11 +988,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
   if (tgUser) {
-    S.telegramId = String(tgUser.id);
+    const realId = String(tgUser.id);
+    const idChanged = S.telegramId && S.telegramId !== realId;
+
+    // Если ID изменился (старый неверный localStorage) — чистим локальный профиль
+    if (idChanged) {
+      S = { telegramId: realId };
+    } else {
+      S.telegramId = realId;
+    }
     save();
 
-    // Если нет локального профиля — пробуем загрузить с сервера
-    if (!S.profile) {
+    // Загружаем профиль с сервера если нет локального или ID поменялся
+    if (!S.profile || idChanged) {
       const serverProfile = await apiLoadProfile(S.telegramId);
       if (serverProfile && serverProfile.name) {
         S.profile = {
@@ -1004,7 +1012,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
         save();
       } else {
-        // Нет нигде — prefill имя из Telegram, онбординг спросит пол/возраст
         S._tgName = tgUser.first_name + (tgUser.last_name ? ' '+tgUser.last_name : '');
       }
     }
