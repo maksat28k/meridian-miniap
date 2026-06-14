@@ -969,7 +969,7 @@ function save() { localStorage.setItem('mrd', JSON.stringify(S)); }
 function go(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const navScreens = ['home','indicators','profile'];
+  const navScreens = ['home','indicators','profile','ai-chat'];
   document.getElementById('bnav').classList.toggle('show', navScreens.includes(id));
   document.querySelectorAll('.ni').forEach(n => n.classList.remove('on'));
   if (id==='home')       document.getElementById('ni-home').classList.add('on');
