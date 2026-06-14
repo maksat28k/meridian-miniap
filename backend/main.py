@@ -242,6 +242,8 @@ async def full_analysis(telegram_id: str):
         timeline.append({'date': a['created_at'][:10], 'indicators': inds})
 
     # Динамика: сравниваем первый и последний
+    from ai_analysis import REFERENCE_RANGES
+    gender = user.get('gender', 'm') or 'm'
     first = timeline[0]['indicators']
     last  = timeline[-1]['indicators']
     dynamics = []
@@ -249,7 +251,20 @@ async def full_analysis(telegram_id: str):
         if k in first and k in last:
             diff = last[k] - first[k]
             pct  = round(diff / first[k] * 100, 1) if first[k] else 0
-            dynamics.append({'key': k, 'first': first[k], 'last': last[k], 'diff': round(diff,2), 'pct': pct})
+            ref = REFERENCE_RANGES.get(k, {})
+            g = gender if gender in ('m', 'f') else 'm'
+            rng = ref.get(g, ref.get('m', (None, None)))
+            dynamics.append({
+                'key': k,
+                'name': ref.get('name', k),
+                'unit': ref.get('unit', ''),
+                'norm_min': rng[0],
+                'norm_max': rng[1],
+                'first': first[k],
+                'last': last[k],
+                'diff': round(diff, 2),
+                'pct': pct
+            })
 
     # Полный промпт для AI
     gender_text = "мужчина" if user.get('gender') == 'm' else "женщина"

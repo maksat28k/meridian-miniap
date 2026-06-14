@@ -1674,11 +1674,112 @@ function renderFullAnalysis(d) {
     </div>`;
   }
 
+  // Графики
+  if (d.timeline?.length >= 2) {
+    const seriesMap = {};
+    d.timeline.forEach(t => {
+      Object.entries(t.indicators).forEach(([k,v]) => {
+        if (!seriesMap[k]) seriesMap[k] = [];
+        seriesMap[k].push({date: t.date, value: v});
+      });
+    });
+    const chartKeys = Object.entries(seriesMap).filter(([,pts]) => pts.length >= 2);
+    if (chartKeys.length) {
+      const dynByKey = {};
+      (d.dynamics||[]).forEach(x => dynByKey[x.key] = x);
+
+      html += `<div class="ana-card">
+        <div class="ana-card-title">📈 ГРАФИКИ ПОКАЗАТЕЛЕЙ</div>
+        <div style="display:flex;flex-direction:column;gap:18px;margin-top:4px">
+        ${chartKeys.map(([key,points])=>{
+          const dyn = dynByKey[key] || {};
+          const name = dyn.name || key;
+          const unit = dyn.unit || '';
+          const normMin = dyn.norm_min;
+          const normMax = dyn.norm_max;
+          return `<div>
+            <div style="font-size:12px;font-weight:700;margin-bottom:6px;color:var(--text)">${name}${unit?' ('+unit+')':''}</div>
+            ${buildIndicatorChart(points, normMin, normMax)}
+          </div>`;
+        }).join('')}
+        </div>
+      </div>`;
+    }
+  }
+
   html += `<div style="padding:8px 20px 28px;font-size:11px;color:var(--text2);text-align:center;line-height:1.6">
     Разбор основан на PubMed, NEJM, JAMA, Cochrane.<br>Не заменяет консультацию врача.
   </div>`;
 
   document.getElementById('fa-body').innerHTML = html;
+}
+
+function buildIndicatorChart(points, normMin, normMax) {
+  const W = 300, H = 90;
+  const padL = 38, padR = 10, padT = 10, padB = 28;
+  const cW = W - padL - padR;
+  const cH = H - padT - padB;
+
+  const vals = points.map(p => p.value);
+  let lo = Math.min(...vals);
+  let hi = Math.max(...vals);
+  if (normMin != null) lo = Math.min(lo, normMin);
+  if (normMax != null) hi = Math.max(hi, normMax);
+  const spread = hi - lo || 1;
+  lo -= spread * 0.12;
+  hi += spread * 0.12;
+  const range = hi - lo;
+
+  const xOf = i => padL + (points.length === 1 ? cW/2 : i / (points.length-1) * cW);
+  const yOf = v => padT + cH - (v - lo) / range * cH;
+
+  // Normal range band
+  let bandSvg = '';
+  if (normMin != null && normMax != null) {
+    const y1 = yOf(normMax);
+    const y2 = yOf(normMin);
+    bandSvg = `<rect x="${padL}" y="${y1}" width="${cW}" height="${y2-y1}" fill="#4ade8022" rx="2"/>
+    <line x1="${padL}" y1="${y1}" x2="${padL+cW}" y2="${y1}" stroke="#4ade80" stroke-width="0.7" stroke-dasharray="3,2" opacity="0.7"/>
+    <line x1="${padL}" y1="${y2}" x2="${padL+cW}" y2="${y2}" stroke="#4ade80" stroke-width="0.7" stroke-dasharray="3,2" opacity="0.7"/>`;
+  }
+
+  // Polyline
+  const polyPts = points.map((p,i) => `${xOf(i)},${yOf(p.value)}`).join(' ');
+
+  // Dots + values + dates
+  let dotsSvg = '', labelsSvg = '', datesSvg = '';
+  points.forEach((p,i) => {
+    const cx = xOf(i), cy = yOf(p.value);
+    const inRange = (normMin==null || p.value >= normMin) && (normMax==null || p.value <= normMax);
+    const clr = normMin==null ? '#60a5fa' : (inRange ? '#4ade80' : '#f87171');
+    dotsSvg += `<circle cx="${cx}" cy="${cy}" r="4" fill="${clr}" stroke="white" stroke-width="1.5"/>`;
+    // value label above dot
+    const valStr = p.value >= 100 ? Math.round(p.value).toString() : p.value.toFixed(1).replace(/\.0$/,'');
+    labelsSvg += `<text x="${cx}" y="${cy-7}" text-anchor="middle" font-size="8" fill="${clr}" font-weight="600">${valStr}</text>`;
+    // date label below
+    const dateParts = p.date.split('-');
+    const dateShort = dateParts.length === 3 ? `${dateParts[2]}.${dateParts[1]}` : p.date.slice(5);
+    datesSvg += `<text x="${cx}" y="${H-4}" text-anchor="middle" font-size="8" fill="#888">${dateShort}</text>`;
+  });
+
+  // Y axis labels (2 ticks: lo and hi of norm or data range)
+  let yAxisSvg = '';
+  const tickVals = [lo + range*0.1, lo + range*0.9];
+  tickVals.forEach(tv => {
+    const y = yOf(tv);
+    const label = tv >= 100 ? Math.round(tv) : tv.toFixed(1);
+    yAxisSvg += `<text x="${padL-4}" y="${y+3}" text-anchor="end" font-size="8" fill="#888">${label}</text>`;
+  });
+
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    <rect x="${padL}" y="${padT}" width="${cW}" height="${cH}" fill="transparent" rx="4"/>
+    ${bandSvg}
+    <polyline points="${polyPts}" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${yAxisSvg}
+    ${labelsSvg}
+    ${dotsSvg}
+    ${datesSvg}
+  </svg>`;
 }
 
 // ── AI CHAT ──
