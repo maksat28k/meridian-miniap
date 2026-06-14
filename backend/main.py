@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 import sqlite3, os, json, shutil, asyncio
@@ -6,6 +6,10 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from pdf_parser import parse_pdf
 from ai_analysis import analyze_with_ai, REFERENCE_RANGES, get_status
+
+BOT_TOKEN  = os.environ.get("BOT_TOKEN", "")
+WEBAPP_URL = "https://maksat28k.github.io/meridian-miniap"
+API_URL    = os.environ.get("API_URL", "https://meridian-miniap-production.up.railway.app")
 
 app = FastAPI(title="Meridian API")
 
@@ -54,6 +58,89 @@ def init_db():
     db.close()
 
 init_db()
+
+# ── TELEGRAM BOT (webhook) ──
+async def setup_webhook():
+    if not BOT_TOKEN:
+        return
+    try:
+        import httpx
+        webhook_url = f"{API_URL}/bot/webhook"
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+                json={"url": webhook_url, "drop_pending_updates": True}
+            )
+            print(f"Webhook set: {r.json()}")
+    except Exception as e:
+        print(f"Webhook setup error: {e}")
+
+@app.on_event("startup")
+async def on_startup():
+    await setup_webhook()
+
+@app.post("/bot/webhook")
+async def bot_webhook(request: Request):
+    if not BOT_TOKEN:
+        return {"ok": True}
+    try:
+        import httpx
+        data = await request.json()
+        msg = data.get("message") or data.get("edited_message")
+        if not msg:
+            return {"ok": True}
+
+        chat_id = msg["chat"]["id"]
+        text = msg.get("text", "")
+        user = msg.get("from", {})
+        first = user.get("first_name", "")
+        last  = user.get("last_name", "")
+        name  = (first + (" " + last if last else "")).strip()
+
+        if text.startswith("/start"):
+            reply = {
+                "chat_id": chat_id,
+                "text": (
+                    f"Привет, {first}! 👋\n\n"
+                    "Meridian — персональный разбор анализов крови на основе доказательной медицины.\n\n"
+                    "📄 Загрузи PDF с анализами\n"
+                    "🔬 Получи расшифровку с научными источниками\n"
+                    "📈 Следи за динамикой здоровья\n\n"
+                    "Нажми кнопку ниже ↓"
+                ),
+                "reply_markup": {
+                    "keyboard": [[{
+                        "text": "🩺 Открыть Meridian",
+                        "web_app": {"url": WEBAPP_URL}
+                    }]],
+                    "resize_keyboard": True,
+                    "persistent": True
+                }
+            }
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                    json=reply
+                )
+        elif text.startswith("/help"):
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                    json={
+                        "chat_id": chat_id,
+                        "text": (
+                            "🩺 Как пользоваться Meridian:\n\n"
+                            "1. Нажми кнопку «Открыть Meridian»\n"
+                            "2. Заполни профиль (возраст, пол)\n"
+                            "3. Загрузи PDF с анализами крови\n"
+                            "4. Получи персональный разбор с AI\n\n"
+                            "По вопросам: @maksat28k"
+                        )
+                    }
+                )
+    except Exception as e:
+        print(f"Webhook handler error: {e}")
+    return {"ok": True}
 
 def get_or_create_user(telegram_id: str, name: str = None):
     db = get_db()
