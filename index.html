@@ -999,6 +999,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     save();
 
+    // Регистрируем пользователя при первом открытии (даже без заполнения анкеты)
+    const tgName = tgUser.first_name + (tgUser.last_name ? ' '+tgUser.last_name : '');
+    fetch(`${API_URL}/api/user/save`, { method:'POST', body: (() => {
+      const fd = new FormData();
+      fd.append('telegram_id', S.telegramId);
+      fd.append('name', tgName);
+      fd.append('gender', ''); fd.append('age', '0');
+      fd.append('height', ''); fd.append('weight', '');
+      return fd;
+    })() }).catch(()=>{});
+
     // Загружаем профиль с сервера если нет локального или ID поменялся
     if (!S.profile || idChanged) {
       const serverProfile = await apiLoadProfile(S.telegramId);
@@ -1012,7 +1023,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
         save();
       } else {
-        S._tgName = tgUser.first_name + (tgUser.last_name ? ' '+tgUser.last_name : '');
+        S._tgName = tgName;
       }
     }
 

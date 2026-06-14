@@ -99,20 +99,29 @@ def root():
 @app.post("/api/user/save")
 async def save_user(
     telegram_id: str = Form(...),
-    name: str = Form(...),
-    gender: str = Form(...),
-    age: int = Form(...),
+    name: str = Form(""),
+    gender: str = Form(""),
+    age: int = Form(0),
     height: int = Form(None),
     weight: int = Form(None),
 ):
     db = get_db()
-    db.execute("""
-        INSERT INTO users (telegram_id, name, gender, age, height, weight)
-        VALUES (?,?,?,?,?,?)
-        ON CONFLICT(telegram_id) DO UPDATE SET
-            name=excluded.name, gender=excluded.gender,
-            age=excluded.age, height=excluded.height, weight=excluded.weight
-    """, (telegram_id, name, gender, age, height, weight))
+    existing = db.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
+    if existing:
+        existing = dict(existing)
+        # Не затираем уже заполненные поля пустыми значениями
+        upd_name   = name   if name   else existing.get('name', '')
+        upd_gender = gender if gender else existing.get('gender', '')
+        upd_age    = age    if age    else existing.get('age', 0)
+        upd_height = height if height else existing.get('height')
+        upd_weight = weight if weight else existing.get('weight')
+        db.execute("""UPDATE users SET name=?,gender=?,age=?,height=?,weight=?
+                      WHERE telegram_id=?""",
+                   (upd_name, upd_gender, upd_age, upd_height, upd_weight, telegram_id))
+    else:
+        db.execute("""INSERT INTO users (telegram_id, name, gender, age, height, weight)
+                      VALUES (?,?,?,?,?,?)""",
+                   (telegram_id, name, gender, age, height, weight))
     db.commit()
     user = db.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
     db.close()
