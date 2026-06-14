@@ -9,7 +9,7 @@ _client = None
 def get_client():
     global _client
     if _client is None:
-        _client = genai.Client(api_key=GEMINI_KEY)
+        _client = genai.Client(api_key=GEMINI_KEY, http_options={'api_version': 'v1'})
     return _client
 
 REFERENCE_RANGES = {
@@ -158,7 +158,7 @@ def analyze_with_ai(indicators: dict, gender: str, age: int, name: str, raw_text
 
     try:
         client = get_client()
-        response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
+        response = client.models.generate_content(model='models/gemini-2.5-flash', contents=prompt)
         text = response.text.strip()
 
         # Извлекаем JSON из ответа
