@@ -215,6 +215,78 @@ def get_analyses(telegram_id: str):
         })
     return result
 
+@app.post("/api/chat")
+async def chat(
+    telegram_id: str = Form(...),
+    message: str = Form(...),
+    history: str = Form("[]"),
+):
+    """AI-чат с контекстом всех анализов пользователя."""
+    # Загружаем последние анализы
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
+    context = ""
+    if user:
+        analyses = db.execute(
+            "SELECT indicators, ai_result, created_at FROM analyses WHERE user_id=? ORDER BY created_at DESC LIMIT 3",
+            (user['id'],)
+        ).fetchall()
+        if analyses:
+            latest = dict(analyses[0])
+            ai = json.loads(latest['ai_result'])
+            inds = json.loads(latest['indicators'])
+            date = latest['created_at'][:10]
+            ind_lines = '\n'.join(f"  {k}: {v}" for k,v in inds.items())
+            context = f"""ДАННЫЕ ПОЛЬЗОВАТЕЛЯ (анализ от {date}):
+Показатели:
+{ind_lines}
+Краткий вывод AI: {ai.get('summary','')}
+"""
+        profile = dict(user)
+        if profile.get('name'):
+            context = f"Пациент: {profile['name']}, {profile.get('age','')} лет, {'мужчина' if profile.get('gender')=='m' else 'женщина'}\n" + context
+    db.close()
+
+    chat_history = json.loads(history) if history else []
+
+    system = f"""Ты — персональный AI-врач Meridian. Отвечай на вопросы пользователя о его здоровье.
+У тебя есть его данные анализов:
+
+{context}
+
+Правила:
+- Отвечай кратко и по делу (2-4 предложения)
+- Говори простым языком, без медицинского жаргона
+- Если вопрос не связан со здоровьем — мягко верни к теме
+- Не ставь диагнозы, давай направления для понимания
+- Если нужен врач — скажи к какому именно"""
+
+    # Строим историю разговора
+    contents = [{"role": "user", "parts": [{"text": system + "\n\nНачало диалога."}]},
+                {"role": "model", "parts": [{"text": "Привет! Я изучил твои анализы и готов ответить на вопросы."}]}]
+
+    for msg in chat_history[-10:]:  # последние 10 сообщений
+        role = "user" if msg.get("role") == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": msg.get("text", "")}]})
+
+    contents.append({"role": "user", "parts": [{"text": message}]})
+
+    try:
+        from ai_analysis import get_client
+        loop = asyncio.get_event_loop()
+        def call_gemini():
+            client = get_client()
+            resp = client.models.generate_content(
+                model='models/gemini-2.5-flash',
+                contents=contents
+            )
+            return resp.text.strip()
+        reply = await loop.run_in_executor(executor, call_gemini)
+    except Exception as e:
+        reply = "Извини, не смог ответить. Попробуй ещё раз."
+
+    return {"reply": reply}
+
 @app.get("/api/analysis/{analysis_id}")
 def get_analysis(analysis_id: int):
     db = get_db()

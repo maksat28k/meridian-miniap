@@ -297,6 +297,26 @@ body {
 .pdf-spinner { width:20px; height:20px; border:2px solid var(--accent-light); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0; }
 @keyframes spin { to { transform:rotate(360deg); } }
 #pdf-drop-zone:hover { border-color:var(--accent); }
+
+/* ── CHAT ── */
+#ai-chat { display:none; flex-direction:column; padding-bottom:0; background:var(--bg); }
+#ai-chat.active { display:flex; }
+.chat-hdr { display:flex; align-items:center; justify-content:space-between; padding:14px 16px 12px; background:var(--accent); color:white; position:sticky; top:0; z-index:10; }
+.chat-avatar { width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,.25); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; }
+.chat-messages { flex:1; overflow-y:auto; padding:16px 14px; display:flex; flex-direction:column; gap:10px; min-height:0; max-height:calc(100vh - 140px); }
+.chat-bubble { max-width:82%; padding:10px 14px; border-radius:18px; font-size:14px; line-height:1.5; word-break:break-word; }
+.bubble-ai { background:var(--card); color:var(--text); border-bottom-left-radius:4px; align-self:flex-start; box-shadow:var(--shadow); }
+.bubble-user { background:var(--accent); color:white; border-bottom-right-radius:4px; align-self:flex-end; }
+.bubble-typing { background:var(--card); padding:12px 16px; border-radius:18px; border-bottom-left-radius:4px; align-self:flex-start; box-shadow:var(--shadow); }
+.typing-dots { display:flex; gap:4px; align-items:center; }
+.typing-dots span { width:7px; height:7px; border-radius:50%; background:var(--accent); animation:tdot 1.2s infinite; }
+.typing-dots span:nth-child(2) { animation-delay:.2s; }
+.typing-dots span:nth-child(3) { animation-delay:.4s; }
+@keyframes tdot { 0%,60%,100%{transform:translateY(0);opacity:.4} 30%{transform:translateY(-5px);opacity:1} }
+.chat-input-row { display:flex; gap:8px; padding:10px 14px 24px; background:var(--card); border-top:1px solid var(--border); position:sticky; bottom:0; }
+.chat-input { flex:1; border:1.5px solid var(--border); border-radius:22px; padding:10px 16px; font-size:14px; font-family:inherit; background:var(--bg); color:var(--text); outline:none; }
+.chat-input:focus { border-color:var(--accent); }
+.chat-send { width:42px; height:42px; border-radius:50%; background:var(--accent); border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .rb-hi  { background:#fee2e2; color:var(--bad); }
 .rb-md  { background:#fef3c7; color:#d97706; }
 .rb-lo  { background:#dcfce7; color:#16a34a; }
@@ -629,8 +649,42 @@ body {
     <button class="back-btn" onclick="go('home')" style="margin-bottom:10px">‹ Назад</button>
     <div class="ana-title">Разбор Meridian</div>
     <div class="ana-sub" id="ana-date">Персональный анализ твоих показателей</div>
+    <button onclick="openChat()" style="margin-top:14px;background:rgba(255,255,255,.18);border:1.5px solid rgba(255,255,255,.4);color:white;border-radius:22px;padding:9px 20px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:7px;margin-left:auto;margin-right:auto">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="white" stroke-width="2" stroke-linejoin="round"/></svg>
+      Спросить AI
+    </button>
   </div>
   <div id="ana-body" style="padding:14px 0"></div>
+  <div style="padding:0 20px 28px">
+    <button onclick="openChat()" class="btn btn-primary" style="background:transparent;border:2px solid var(--accent);color:var(--accent)">
+      💬 Задать вопрос по анализам
+    </button>
+  </div>
+</div>
+
+<!-- ══ AI CHAT ══ -->
+<div id="ai-chat" class="screen">
+  <div class="chat-hdr">
+    <button class="back-btn" onclick="go('analysis')" style="color:var(--accent)">‹ Назад</button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="chat-avatar">M</div>
+      <div>
+        <div style="font-weight:700;font-size:15px">Meridian AI</div>
+        <div style="font-size:11px;color:#a0d4ce">знает твои анализы</div>
+      </div>
+    </div>
+    <div style="width:60px"></div>
+  </div>
+  <div id="chat-messages" class="chat-messages"></div>
+  <div class="chat-input-row">
+    <input id="chat-input" class="chat-input" type="text" placeholder="Спроси о своих анализах..." autocomplete="off"
+      onkeydown="if(event.key==='Enter')sendChat()">
+    <button class="chat-send" onclick="sendChat()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
 </div>
 
 <!-- ══ SHARE SCREEN ══ -->
@@ -1451,6 +1505,70 @@ function refreshProfile() {
       <div class="prof-cell-l">${l}</div>
       <div class="prof-cell-v">${v}</div>
     </div>`).join('');
+}
+
+// ── AI CHAT ──
+let chatHistory = [];
+
+function openChat() {
+  go('ai-chat');
+  if (!chatHistory.length) {
+    addBubble('ai', 'Привет! Я изучил твои анализы и готов ответить на любые вопросы. Что тебя интересует?');
+  }
+}
+
+function addBubble(role, text) {
+  const el = document.createElement('div');
+  el.className = 'chat-bubble ' + (role === 'ai' ? 'bubble-ai' : 'bubble-user');
+  el.textContent = text;
+  document.getElementById('chat-messages').appendChild(el);
+  el.scrollIntoView({behavior:'smooth', block:'end'});
+  return el;
+}
+
+function showTyping() {
+  const el = document.createElement('div');
+  el.className = 'bubble-typing';
+  el.id = 'chat-typing';
+  el.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
+  document.getElementById('chat-messages').appendChild(el);
+  el.scrollIntoView({behavior:'smooth', block:'end'});
+}
+
+function hideTyping() {
+  document.getElementById('chat-typing')?.remove();
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  input.disabled = true;
+
+  addBubble('user', text);
+  chatHistory.push({role:'user', text});
+  showTyping();
+
+  try {
+    const fd = new FormData();
+    fd.append('telegram_id', S.telegramId || '0');
+    fd.append('message', text);
+    fd.append('history', JSON.stringify(chatHistory.slice(-10)));
+
+    const res = await fetch(API_URL + '/api/chat', {method:'POST', body: fd});
+    const data = await res.json();
+    hideTyping();
+    const reply = data.reply || 'Не смог ответить, попробуй ещё раз.';
+    addBubble('ai', reply);
+    chatHistory.push({role:'ai', text: reply});
+  } catch(e) {
+    hideTyping();
+    addBubble('ai', 'Нет соединения с сервером. Проверь интернет.');
+  }
+
+  input.disabled = false;
+  input.focus();
 }
 
 // ── TOAST ──
