@@ -711,11 +711,82 @@ function status(ind, val, sex) {
   return 'ok';
 }
 
+// ── API ──
+const API_URL = 'https://meridian-backend.railway.app'; // будет обновлён после деплоя на Railway
+
+async function apiSaveUser(tgUser) {
+  try {
+    await fetch(`${API_URL}/api/user/save`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        telegram_id: tgUser.id,
+        name: tgUser.first_name + (tgUser.last_name ? ' '+tgUser.last_name : ''),
+        username: tgUser.username||null,
+      })
+    });
+  } catch(e) { console.warn('API offline, работаем локально'); }
+}
+
+async function apiLoadAnalyses(telegramId) {
+  try {
+    const res = await fetch(`${API_URL}/api/analyses/${telegramId}`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch(e) { return []; }
+}
+
+async function apiLoadAnalysis(analysisId) {
+  try {
+    const res = await fetch(`${API_URL}/api/analysis/${analysisId}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(e) { return null; }
+}
+
+// Загрузить последний анализ из бэкенда и обновить локальные данные
+async function syncLastAnalysis(telegramId) {
+  const analyses = await apiLoadAnalyses(telegramId);
+  if (!analyses.length) return;
+  const latest = analyses[0]; // отсортированы по дате
+  const detail = await apiLoadAnalysis(latest.id);
+  if (!detail || !detail.indicators) return;
+
+  // Записываем показатели в локальное состояние
+  const newInds = {};
+  (detail.indicators||[]).forEach(ind => {
+    newInds[ind.key] = ind.value;
+  });
+  if (Object.keys(newInds).length > 0) {
+    S.inds = newInds;
+    S.updatedAt = latest.created_at;
+    S.lastAnalysis = detail; // сохраняем полный AI-разбор
+    save();
+  }
+}
+
 // ── INIT ──
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   if (window.Telegram?.WebApp) { Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
   const raw = localStorage.getItem('mrd');
   if (raw) { try { S = JSON.parse(raw); } catch(e){} }
+
+  // Telegram авторизация
+  const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+  if (tgUser) {
+    S.telegramId = tgUser.id;
+    // Автозаполнение профиля из Telegram если нет своего
+    if (!S.profile) {
+      S.profile = {
+        name: tgUser.first_name + (tgUser.last_name ? ' '+tgUser.last_name : ''),
+        gender: 'm', age: 25, height: null, weight: null
+      };
+    }
+    save();
+    apiSaveUser(tgUser);
+    // Синхронизируем последний анализ из бэкенда (PDF, отправленный боту)
+    syncLastAnalysis(tgUser.id).then(()=>{ if(S.profile) refreshHome(); });
+  }
+
   if (S.profile) go('home');
   buildForm();
 });
@@ -947,12 +1018,110 @@ function refreshAna() {
       `<div class="ana-card" style="margin:0 20px;text-align:center;padding:32px">
         <div style="font-size:36px;margin-bottom:14px">🔬</div>
         <div style="font-size:16px;font-weight:600;margin-bottom:8px">Нет данных для анализа</div>
-        <div style="font-size:13px;color:var(--text2);margin-bottom:18px">Добавь результаты анализов</div>
-        <button class="btn btn-primary" onclick="go('indicators')" style="max-width:220px">Добавить анализы</button>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:18px">Отправь PDF анализов боту @meridian_health_bot или введи показатели вручную</div>
+        <button class="btn btn-primary" onclick="go('indicators')" style="max-width:220px">Ввести вручную</button>
       </div>`;
     return;
   }
 
+  // Если есть полный AI-разбор из бэкенда — показываем его
+  const ai = S.lastAnalysis;
+  if (ai && ai.summary) {
+    renderAiAnalysis(ai, sex);
+    return;
+  }
+
+  // Fallback: локальный rule-based разбор
+  renderLocalAnalysis(filled, sex);
+}
+
+function renderAiAnalysis(ai, sex) {
+  let html = '';
+
+  // Итоговый вывод
+  html += `<div class="ana-card">
+    <div class="ana-card-title">🧬 ОБЩАЯ КАРТИНА</div>
+    <div class="ana-card-body" style="line-height:1.6">${ai.summary}</div>
+    ${ai.positive ? `<div style="margin-top:12px;padding:10px 14px;background:#e8f5f3;border-radius:10px;font-size:13px;color:#1a6b61">${ai.positive}</div>` : ''}
+  </div>`;
+
+  // Показатели
+  const inds = ai.indicators||[];
+  const bad_ = inds.filter(i=>i.status==='bad');
+  const warn_ = inds.filter(i=>i.status==='warn');
+  const ok_ = inds.filter(i=>i.status==='ok');
+
+  if (bad_.length+warn_.length>0) html += `
+    <div class="ana-card">
+      <div class="ana-card-title">⚠ ПОКАЗАТЕЛИ ВНЕ НОРМЫ</div>
+      ${[...bad_,...warn_].map(ind=>{
+        const dir = ind.value<ind.ref_min ? '↓ ниже нормы' : '↑ выше нормы';
+        return `<div class="risk-row">
+          <span class="rbadge ${ind.status==='bad'?'rb-hi':'rb-md'}">${ind.status==='bad'?'вне нормы':'вне оптимума'}</span>
+          <div class="risk-txt"><b>${ind.name}:</b> ${ind.value} ${ind.unit} — ${dir}<br>
+          <span style="color:var(--text2);font-size:12px">норма ${ind.ref_min}–${ind.ref_max}</span></div>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  if (ok_.length) html += `
+    <div class="ana-card">
+      <div class="ana-card-title">✓ В НОРМЕ (${ok_.length})</div>
+      <div class="ana-card-body" style="color:var(--text2)">${ok_.map(i=>i.name).join(' · ')}</div>
+    </div>`;
+
+  // Паттерны (уникальная фишка Meridian)
+  if (ai.patterns?.length) html += `
+    <div class="ana-card">
+      <div class="ana-card-title">🔗 ПАТТЕРНЫ</div>
+      ${ai.patterns.map(pt=>`
+        <div style="margin-bottom:14px">
+          <div style="font-weight:600;font-size:14px;margin-bottom:4px">${pt.title}</div>
+          <div style="font-size:13px;color:var(--text2);line-height:1.5">${pt.description}</div>
+          ${pt.indicators?.length ? `<div style="margin-top:6px;font-size:11px;color:var(--accent)">${pt.indicators.join(' · ')}</div>` : ''}
+        </div>`).join('<hr style="border:none;border-top:1px solid var(--border);margin:10px 0">')}
+    </div>`;
+
+  // Риски
+  if (ai.risks?.length) html += `
+    <div class="ana-card">
+      <div class="ana-card-title">🔮 РИСКИ</div>
+      ${ai.risks.map(r=>`<div class="risk-row">
+        <span class="rbadge ${r.level==='high'?'rb-hi':r.level==='medium'?'rb-md':'rb-lo'}">${r.level==='high'?'высокий':r.level==='medium'?'средний':'низкий'}</span>
+        <div class="risk-txt"><b>${r.title}</b><br><span style="font-size:12px;color:var(--text2)">${r.description}</span></div>
+      </div>`).join('')}
+    </div>`;
+
+  // Протокол действий
+  if (ai.protocol?.length) html += `
+    <div class="ana-card">
+      <div class="ana-card-title">📋 ЧТО ДЕЛАТЬ ПРЯМО СЕЙЧАС</div>
+      ${ai.protocol.map((a,i)=>`<div class="prot-row">
+        <div class="prot-num">${a.priority||i+1}</div>
+        <div class="prot-txt"><b>${a.action}</b><br>
+        <span style="font-size:12px;color:var(--text2)">${a.reason||''} ${a.timeframe?'· '+a.timeframe:''}</span></div>
+      </div>`).join('')}
+    </div>`;
+
+  // Образ жизни
+  const ls = ai.lifestyle;
+  if (ls && (ls.nutrition||ls.supplements||ls.tests||ls.doctor)) html += `
+    <div class="ana-card">
+      <div class="ana-card-title">🌿 РЕКОМЕНДАЦИИ</div>
+      ${ls.nutrition?`<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px">ПИТАНИЕ</div><div style="font-size:13px">${ls.nutrition}</div></div>`:''}
+      ${ls.supplements?`<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px">ДОБАВКИ</div><div style="font-size:13px">${ls.supplements}</div></div>`:''}
+      ${ls.tests?`<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px">ПЕРЕСДАТЬ</div><div style="font-size:13px">${ls.tests}</div></div>`:''}
+      ${ls.doctor?`<div><div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px">ВРАЧ</div><div style="font-size:13px">${ls.doctor}</div></div>`:''}
+    </div>`;
+
+  html += `<div style="padding:8px 20px 20px;font-size:11px;color:var(--text2);text-align:center;line-height:1.6">
+    Разбор на основе PubMed, JAMA, NIH, Lancet.<br>Не заменяет консультацию врача. Meridian — превентивная медицина.
+  </div>`;
+
+  document.getElementById('ana-body').innerHTML = html;
+}
+
+function renderLocalAnalysis(filled, sex) {
   const bad_  = filled.filter(i=>status(i,parseFloat(S.inds[i.k]),sex)==='bad');
   const warn_ = filled.filter(i=>status(i,parseFloat(S.inds[i.k]),sex)==='warn');
   const ok_   = filled.filter(i=>status(i,parseFloat(S.inds[i.k]),sex)==='ok');
