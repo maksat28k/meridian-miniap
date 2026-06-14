@@ -387,8 +387,9 @@ body {
 .ni.on .ni-svg { color:var(--accent); }
 /* Центральная AI кнопка */
 .ni-ai-wrap { width:40px; height:40px; border-radius:50%; background:var(--accent); display:flex; align-items:center; justify-content:center; margin-top:-10px; box-shadow:0 4px 14px rgba(46,155,143,.45); transition:transform .15s; }
-.ni-ai-wrap .ni-svg { width:20px; height:20px; color:white; animation:sphere-spin 4s linear infinite; transform-style:preserve-3d; }
-@keyframes sphere-spin { from{transform:perspective(40px) rotateY(0deg)} to{transform:perspective(40px) rotateY(360deg)} }
+.ni-ai-wrap .ni-svg { width:20px; height:20px; color:white; }
+.ni-ai-wrap .ni-svg .sphere-ring { transform-box:fill-box; transform-origin:center; animation:ring-spin 4s linear infinite; }
+@keyframes ring-spin { 0%{transform:scaleX(1)} 25%{transform:scaleX(0)} 50%{transform:scaleX(-1)} 75%{transform:scaleX(0)} 100%{transform:scaleX(1)} }
 #ni-ai { color:var(--accent); }
 #ni-ai .ni-lbl { color:var(--accent); font-weight:700; }
 #ni-ai.on .ni-ai-wrap { transform:scale(1.08); }
@@ -770,7 +771,7 @@ body {
   </div>
   <div class="ni" id="ni-ai" onclick="openChat()">
     <div class="ni-ai-wrap">
-      <svg class="ni-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><ellipse cx="12" cy="12" rx="4" ry="9" stroke="currentColor" stroke-width="1.5"/></svg>
+      <svg class="ni-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><ellipse class="sphere-ring" cx="12" cy="12" rx="4" ry="9" stroke="currentColor" stroke-width="1.5"/><line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="1.5"/></svg>
     </div>
     <span class="ni-lbl">Meridian AI</span>
   </div>
