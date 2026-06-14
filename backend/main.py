@@ -1,6 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 import sqlite3, os, json, shutil, asyncio
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
@@ -450,6 +450,109 @@ def get_analysis(analysis_id: int):
         'lifestyle': ai.get('lifestyle', {}),
         'positive': ai.get('positive', ''),
     }
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_panel(token: str = Query(default="")):
+    ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "meridian2025")
+    if token != ADMIN_TOKEN:
+        return HTMLResponse("""<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meridian Admin</title>
+<style>body{font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#0f172a;color:#fff}
+.box{background:#1e293b;padding:32px;border-radius:16px;text-align:center;min-width:300px}
+h2{margin:0 0 20px;color:#60a5fa}input{width:100%;padding:10px 14px;border-radius:8px;border:1px solid #334155;background:#0f172a;color:#fff;font-size:15px;box-sizing:border-box;margin-bottom:12px}
+button{width:100%;padding:10px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-size:15px;cursor:pointer}
+</style></head><body><div class="box"><h2>🔐 Meridian Admin</h2>
+<form onsubmit="event.preventDefault();window.location='/admin?token='+document.getElementById('t').value">
+<input id="t" type="password" placeholder="Пароль"><button type="submit">Войти</button>
+</form></div></body></html>""", status_code=401)
+
+    db = get_db()
+
+    total_users = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    total_analyses = db.execute("SELECT COUNT(*) FROM analyses").fetchone()[0]
+
+    users_by_day = db.execute("""
+        SELECT DATE(created_at) as day, COUNT(*) as cnt
+        FROM users GROUP BY day ORDER BY day DESC LIMIT 30
+    """).fetchall()
+
+    analyses_by_day = db.execute("""
+        SELECT DATE(created_at) as day, COUNT(*) as cnt
+        FROM analyses GROUP BY day ORDER BY day DESC LIMIT 30
+    """).fetchall()
+
+    recent_users = db.execute("""
+        SELECT u.telegram_id, u.name, u.age, u.gender, u.created_at,
+               COUNT(a.id) as analysis_count
+        FROM users u LEFT JOIN analyses a ON a.user_id = u.id
+        GROUP BY u.id ORDER BY u.created_at DESC LIMIT 50
+    """).fetchall()
+
+    db.close()
+
+    def bar(val, max_val, width=120):
+        pct = int(val / max_val * width) if max_val else 0
+        return f'<div style="display:inline-block;width:{pct}px;height:10px;background:#3b82f6;border-radius:3px;vertical-align:middle;margin-left:8px"></div>'
+
+    max_reg = max((r['cnt'] for r in users_by_day), default=1)
+    max_ana = max((r['cnt'] for r in analyses_by_day), default=1)
+
+    reg_rows = ''.join(f'<tr><td>{r["day"]}</td><td>{r["cnt"]}{bar(r["cnt"],max_reg)}</td></tr>' for r in users_by_day)
+    ana_rows = ''.join(f'<tr><td>{r["day"]}</td><td>{r["cnt"]}{bar(r["cnt"],max_ana)}</td></tr>' for r in analyses_by_day)
+
+    gender_map = {'m': '♂ муж', 'f': '♀ жен', None: '—', '': '—'}
+    user_rows = ''.join(f'''<tr>
+        <td>{u["name"] or "—"}</td>
+        <td style="color:#94a3b8;font-size:12px">{u["telegram_id"]}</td>
+        <td>{u["age"] or "—"}</td>
+        <td>{gender_map.get(u["gender"], "—")}</td>
+        <td style="text-align:center"><span style="background:#3b82f6;color:#fff;padding:2px 8px;border-radius:10px;font-size:12px">{u["analysis_count"]}</span></td>
+        <td style="color:#64748b;font-size:12px">{(u["created_at"] or "")[:16]}</td>
+    </tr>''' for u in recent_users)
+
+    html = f"""<!DOCTYPE html><html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Meridian Admin</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;padding:24px}}
+h1{{font-size:22px;margin-bottom:24px;color:#f8fafc}}span.tag{{color:#60a5fa}}
+.stats{{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:32px}}
+.stat{{background:#1e293b;border-radius:14px;padding:20px 28px;flex:1;min-width:140px}}
+.stat .n{{font-size:40px;font-weight:700;color:#60a5fa}}
+.stat .l{{font-size:13px;color:#94a3b8;margin-top:4px}}
+.card{{background:#1e293b;border-radius:14px;padding:20px;margin-bottom:24px}}
+.card h2{{font-size:15px;font-weight:600;margin-bottom:16px;color:#cbd5e1}}
+table{{width:100%;border-collapse:collapse;font-size:13px}}
+th{{text-align:left;padding:8px 10px;color:#64748b;font-weight:500;border-bottom:1px solid #334155}}
+td{{padding:8px 10px;border-bottom:1px solid #1e293b;vertical-align:middle}}
+tr:hover td{{background:#263348}}
+</style></head><body>
+<h1>📊 Meridian <span class="tag">Admin</span></h1>
+<div class="stats">
+  <div class="stat"><div class="n">{total_users}</div><div class="l">Пользователей</div></div>
+  <div class="stat"><div class="n">{total_analyses}</div><div class="l">Анализов загружено</div></div>
+  <div class="stat"><div class="n">{round(total_analyses/total_users,1) if total_users else 0}</div><div class="l">Анализов на пользователя</div></div>
+</div>
+<div class="card">
+  <h2>👥 Пользователи (последние 50)</h2>
+  <table><thead><tr><th>Имя</th><th>Telegram ID</th><th>Возраст</th><th>Пол</th><th>Анализов</th><th>Зарегистрирован</th></tr></thead>
+  <tbody>{user_rows}</tbody></table>
+</div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+<div class="card">
+  <h2>📅 Регистрации по дням</h2>
+  <table><thead><tr><th>Дата</th><th>Новых</th></tr></thead><tbody>{reg_rows}</tbody></table>
+</div>
+<div class="card">
+  <h2>📄 Анализы по дням</h2>
+  <table><thead><tr><th>Дата</th><th>Загружено</th></tr></thead><tbody>{ana_rows}</tbody></table>
+</div>
+</div>
+</body></html>"""
+    return HTMLResponse(html)
+
 
 if __name__ == "__main__":
     import uvicorn
