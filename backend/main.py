@@ -10,6 +10,7 @@ from ai_analysis import analyze_with_ai, REFERENCE_RANGES, get_status
 BOT_TOKEN  = os.environ.get("BOT_TOKEN", "")
 WEBAPP_URL = "https://maksat28k.github.io/meridian-miniap"
 API_URL    = os.environ.get("API_URL", "https://meridian-miniap-production.up.railway.app")
+ADMIN_ID   = os.environ.get("ADMIN_ID", "")
 
 app = FastAPI(title="Meridian API")
 
@@ -58,6 +59,19 @@ def init_db():
     db.close()
 
 init_db()
+
+async def notify_admin(text: str):
+    if not BOT_TOKEN or not ADMIN_ID:
+        return
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                json={"chat_id": ADMIN_ID, "text": text, "parse_mode": "HTML"}
+            )
+    except Exception as e:
+        print(f"notify_admin error: {e}")
 
 # ── TELEGRAM BOT (webhook) ──
 async def setup_webhook():
@@ -138,6 +152,31 @@ async def bot_webhook(request: Request):
                         )
                     }
                 )
+        elif text.startswith("/stats") and str(chat_id) == ADMIN_ID:
+            db = get_db()
+            total_users    = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            total_analyses = db.execute("SELECT COUNT(*) FROM analyses").fetchone()[0]
+            today_users    = db.execute("SELECT COUNT(*) FROM users WHERE DATE(created_at)=DATE('now')").fetchone()[0]
+            today_analyses = db.execute("SELECT COUNT(*) FROM analyses WHERE DATE(created_at)=DATE('now')").fetchone()[0]
+            week_users     = db.execute("SELECT COUNT(*) FROM users WHERE created_at >= datetime('now','-7 days')").fetchone()[0]
+            recent = db.execute("SELECT name, telegram_id, created_at FROM users ORDER BY created_at DESC LIMIT 5").fetchall()
+            db.close()
+            recent_text = "\n".join(f"  • {r['name'] or 'аноним'} ({r['telegram_id']}) — {r['created_at'][:10]}" for r in recent)
+            stats_text = (
+                f"📊 <b>Meridian Stats</b>\n\n"
+                f"👥 Всего пользователей: <b>{total_users}</b>\n"
+                f"📄 Всего анализов: <b>{total_analyses}</b>\n"
+                f"📈 Анализов на пользователя: <b>{round(total_analyses/total_users,1) if total_users else 0}</b>\n\n"
+                f"📅 Сегодня:\n"
+                f"  Новых: <b>{today_users}</b> | Анализов: <b>{today_analyses}</b>\n\n"
+                f"📅 За 7 дней: <b>{week_users}</b> новых\n\n"
+                f"🕐 Последние регистрации:\n{recent_text}"
+            )
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                    json={"chat_id": chat_id, "text": stats_text, "parse_mode": "HTML"}
+                )
     except Exception as e:
         print(f"Webhook handler error: {e}")
     return {"ok": True}
@@ -209,6 +248,16 @@ async def save_user(
         db.execute("""INSERT INTO users (telegram_id, name, gender, age, height, weight)
                       VALUES (?,?,?,?,?,?)""",
                    (telegram_id, name, gender, age, height, weight))
+        # Уведомление о новом пользователе
+        db2 = get_db()
+        total = db2.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        db2.close()
+        asyncio.create_task(notify_admin(
+            f"🆕 <b>Новый пользователь!</b>\n"
+            f"👤 {name or 'аноним'}\n"
+            f"🆔 {telegram_id}\n"
+            f"👥 Всего в базе: <b>{total}</b>"
+        ))
     db.commit()
     user = db.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
     db.close()
