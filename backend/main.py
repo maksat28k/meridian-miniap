@@ -1,8 +1,9 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import sqlite3, os, json, shutil
+import sqlite3, os, json, shutil, asyncio
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 from pdf_parser import parse_pdf
 from ai_analysis import analyze_with_ai, REFERENCE_RANGES, get_status
 
@@ -19,7 +20,8 @@ DB_PATH = "meridian.db"
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# ── DATABASE ──
+executor = ThreadPoolExecutor(max_workers=4)
+
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -53,7 +55,6 @@ def init_db():
 
 init_db()
 
-# ── HELPERS ──
 def get_or_create_user(telegram_id: str, name: str = None):
     db = get_db()
     user = db.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
@@ -63,6 +64,31 @@ def get_or_create_user(telegram_id: str, name: str = None):
         user = db.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
     db.close()
     return dict(user)
+
+def get_history_summary(telegram_id: str, limit: int = 3) -> str:
+    """Получает историю анализов для контекста AI."""
+    try:
+        db = get_db()
+        user = db.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
+        if not user:
+            db.close()
+            return ""
+        analyses = db.execute(
+            "SELECT indicators, created_at FROM analyses WHERE user_id=? ORDER BY created_at DESC LIMIT ?",
+            (user['id'], limit)
+        ).fetchall()
+        db.close()
+        if not analyses:
+            return ""
+        lines = []
+        for a in analyses:
+            inds = json.loads(a['indicators'])
+            date = a['created_at'][:10]
+            vals = ', '.join(f"{k}={v}" for k, v in list(inds.items())[:8])
+            lines.append(f"  {date}: {vals}")
+        return "ИСТОРИЯ ПРЕДЫДУЩИХ АНАЛИЗОВ:\n" + "\n".join(lines)
+    except Exception:
+        return ""
 
 # ── ROUTES ──
 
@@ -109,15 +135,20 @@ async def analyze_pdf(
     age: int = Form(...),
     file: UploadFile = File(...),
 ):
-    # Сохраняем PDF
+    # Сохраняем PDF асинхронно
     filename = f"{telegram_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     filepath = os.path.join(UPLOAD_DIR, filename)
-
+    content = await file.read()
     with open(filepath, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        f.write(content)
 
-    # Парсим PDF
-    parsed = parse_pdf(filepath)
+    # Парсим PDF + получаем историю параллельно
+    loop = asyncio.get_event_loop()
+    parsed, history = await asyncio.gather(
+        loop.run_in_executor(executor, parse_pdf, filepath),
+        loop.run_in_executor(executor, get_history_summary, telegram_id),
+    )
+
     indicators = parsed['indicators']
     raw_text   = parsed['raw_text']
 
@@ -127,8 +158,11 @@ async def analyze_pdf(
             "message": "Не удалось извлечь показатели из PDF. Попробуй PDF из Инвитро, Гемотест или Хеликс.",
         })
 
-    # AI анализ
-    ai_result = analyze_with_ai(indicators, gender, age, name, raw_text)
+    # AI анализ с историей (в отдельном потоке чтобы не блокировать)
+    ai_result = await loop.run_in_executor(
+        executor,
+        lambda: analyze_with_ai(indicators, gender, age, name, raw_text, history)
+    )
 
     # Сохраняем в БД
     user = get_or_create_user(telegram_id, name)
@@ -141,7 +175,6 @@ async def analyze_pdf(
     analysis_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     db.close()
 
-    # Возвращаем всё плоско — фронтенд ждёт indicators на верхнем уровне
     return {
         "success": True,
         "analysis_id": analysis_id,
@@ -178,6 +211,7 @@ def get_analyses(telegram_id: str):
             'found': len(inds),
             'attention': ai.get('attention_count', 0),
             'summary': ai.get('summary', ''),
+            'indicators': ai.get('indicators', []),
         })
     return result
 
@@ -188,11 +222,19 @@ def get_analysis(analysis_id: int):
     db.close()
     if not a:
         raise HTTPException(404, "Analysis not found")
+    ai = json.loads(a['ai_result'])
     return {
         'id': a['id'],
-        'date': a['created_at'],
-        'indicators': json.loads(a['indicators']),
-        'result': json.loads(a['ai_result']),
+        'created_at': a['created_at'],
+        'indicators': ai.get('indicators', []),
+        'summary': ai.get('summary', ''),
+        'attention_count': ai.get('attention_count', 0),
+        'ok_count': ai.get('ok_count', 0),
+        'patterns': ai.get('patterns', []),
+        'risks': ai.get('risks', []),
+        'protocol': ai.get('protocol', []),
+        'lifestyle': ai.get('lifestyle', {}),
+        'positive': ai.get('positive', ''),
     }
 
 if __name__ == "__main__":

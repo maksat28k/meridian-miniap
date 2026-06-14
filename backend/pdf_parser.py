@@ -49,8 +49,39 @@ MARKER_ALIASES = {
     'phosphorus':    ['фосфор', 'phosphorus'],
     'zinc':          ['цинк', 'zinc', 'zn'],
     'omega3':        ['омега-3', 'omega-3', 'dha', 'epa'],
-    'igf1':          ['igf-1', 'инсулиноподобный', 'соматомедин'],
-    'dhea':          ['дгэа', 'dhea', 'дегидроэпиандростерон'],
+    'igf1':          ['igf-1', 'инсулиноподобный', 'соматомедин', 'igf1'],
+    'dhea':          ['дгэа', 'dhea', 'дегидроэпиандростерон', 'дгэа-с'],
+    # Развёрнутый ОАК
+    'leukocytes':    ['лейкоциты', 'wbc', 'leukocytes', 'лейк'],
+    'erythrocytes':  ['эритроциты', 'rbc', 'erythrocytes', 'эритр'],
+    'mcv':           ['mcv', 'средний объём эритр', 'ср. объём'],
+    'mch':           ['mch', 'среднее содержание hb', 'ср. содержание гемоглобина'],
+    'mchc':          ['mchc', 'средняя концентрация hb', 'ср. конц. гемоглобина'],
+    'rdw':           ['rdw', 'анизоцитоз', 'ширина распределения эритр'],
+    'neutrophils':   ['нейтрофилы', 'neutrophils', 'нейтр', 'neu'],
+    'lymphocytes':   ['лимфоциты', 'lymphocytes', 'лимф', 'lym'],
+    'monocytes':     ['моноциты', 'monocytes', 'моноц', 'mon'],
+    'eosinophils':   ['эозинофилы', 'eosinophils', 'эозин', 'eos'],
+    'basophils':     ['базофилы', 'basophils', 'базоф', 'bas'],
+    # Липиды
+    'hdl':           ['hdl', 'лпвп', 'холестерин лпвп', 'липопротеин высокой', 'лпвп-хс'],
+    'ldl':           ['ldl', 'лпнп', 'холестерин лпнп', 'липопротеин низкой', 'лпнп-хс'],
+    'triglycerides': ['триглицериды', 'triglycerides', 'тг'],
+    'hba1c':         ['гликированный', 'hba1c', 'гликозилированный', 'hemoglobin a1c', 'hba'],
+    # Почки
+    'creatinine':    ['креатинин', 'creatinine', 'креат'],
+    'urea':          ['мочевина', 'urea', 'bun', 'мочев'],
+    # Прочее
+    'ggt':           ['ггт', 'ggt', 'гамма-глутамил', 'γ-гт'],
+    'bilirubin':     ['билирубин общий', 'total bilirubin', 'bilirubin total', 'билирубин общ'],
+    'albumin':       ['альбумин', 'albumin', 'albumen'],
+    'potassium':     ['калий', 'potassium', 'k '],
+    'sodium':        ['натрий', 'sodium', 'na '],
+    'phosphorus':    ['фосфор', 'phosphorus', 'фосф'],
+    'homocysteine':  ['гомоцистеин', 'homocysteine', 'hcy'],
+    'prolactin':     ['пролактин', 'prolactin'],
+    'estradiol':     ['эстрадиол', 'estradiol', 'e2'],
+    'omega3_index':  ['омега-3 индекс', 'omega-3 index', 'индекс омега'],
 }
 
 def extract_number(text: str) -> Optional[float]:
