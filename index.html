@@ -294,6 +294,9 @@ body {
 .risk-row { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); }
 .risk-row:last-child { border-bottom:none; padding-bottom:0; }
 .rbadge { font-size:10px; font-weight:700; padding:3px 8px; border-radius:6px; flex-shrink:0; margin-top:2px; }
+.pdf-spinner { width:20px; height:20px; border:2px solid var(--accent-light); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite; flex-shrink:0; }
+@keyframes spin { to { transform:rotate(360deg); } }
+#pdf-drop-zone:hover { border-color:var(--accent); }
 .rb-hi  { background:#fee2e2; color:var(--bad); }
 .rb-md  { background:#fef3c7; color:#d97706; }
 .rb-lo  { background:#dcfce7; color:#16a34a; }
@@ -569,8 +572,51 @@ body {
   <div class="scr-hdr">
     <button class="back-btn" onclick="go('home')">‹ Назад</button>
     <div class="pg-title">Показатели</div>
-    <div class="pg-sub">Введи результаты своих анализов</div>
+    <div class="pg-sub">Загрузи PDF или введи вручную</div>
   </div>
+
+  <!-- PDF Upload block -->
+  <div id="pdf-upload-block" style="margin:0 20px 18px">
+    <div id="pdf-drop-zone" onclick="document.getElementById('pdf-file-input').click()"
+      style="border:2px dashed var(--border);border-radius:16px;padding:22px 16px;text-align:center;cursor:pointer;background:var(--card);transition:border-color .2s">
+      <div style="font-size:30px;margin-bottom:8px">📄</div>
+      <div style="font-weight:600;font-size:15px;margin-bottom:4px">Загрузить PDF анализов</div>
+      <div style="font-size:12px;color:var(--text2)">Инвитро, Гемотест, Хеликс — AI считает всё сам</div>
+    </div>
+    <input id="pdf-file-input" type="file" accept="application/pdf" style="display:none" onchange="uploadPdf(this)">
+
+    <!-- Progress -->
+    <div id="pdf-progress" style="display:none;margin-top:12px">
+      <div style="background:var(--accent-light);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div class="pdf-spinner"></div>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:var(--accent)" id="pdf-status-text">Читаю PDF...</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">AI анализирует показатели</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Success -->
+    <div id="pdf-success" style="display:none;margin-top:12px">
+      <div style="background:#e8f5f3;border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div style="font-size:22px">✅</div>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:var(--accent-dark)" id="pdf-found-text">Найдено показателей</div>
+          <div style="font-size:12px;color:var(--text2)">Данные заполнены автоматически</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div id="pdf-error" style="display:none;margin-top:12px">
+      <div style="background:#fef2f2;border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+        <div style="font-size:22px">⚠️</div>
+        <div style="font-size:13px;color:#dc2626" id="pdf-error-text">Не удалось загрузить PDF</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:0 20px 8px;font-size:12px;font-weight:600;color:var(--text2);letter-spacing:.5px">ИЛИ ВВЕДИ ВРУЧНУЮ</div>
   <div id="ind-form"></div>
   <div style="padding:14px 20px 24px">
     <button class="btn btn-primary" onclick="saveInds()">Сохранить анализы</button>
@@ -971,6 +1017,65 @@ function liveColor(k) {
   const sex = S.profile?.gender||'m';
   const s   = status(ind,parseFloat(el.value),sex);
   el.className = 'ind-inp' + (el.value ? ' s-'+s : '');
+}
+
+// ── PDF UPLOAD ──
+async function uploadPdf(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  const progress = document.getElementById('pdf-progress');
+  const success  = document.getElementById('pdf-success');
+  const errEl    = document.getElementById('pdf-error');
+  const statusTx = document.getElementById('pdf-status-text');
+
+  progress.style.display = 'block';
+  success.style.display  = 'none';
+  errEl.style.display    = 'none';
+  statusTx.textContent   = 'Читаю PDF...';
+
+  const p = S.profile || {};
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('telegram_id', S.telegramId || '0');
+  formData.append('name', p.name || 'Пользователь');
+  formData.append('gender', p.gender || 'm');
+  formData.append('age', p.age || 25);
+
+  try {
+    statusTx.textContent = 'AI считывает показатели...';
+    const res = await fetch(API_URL + '/api/analyze', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error('Сервер недоступен (код ' + res.status + ')');
+    const data = await res.json();
+
+    const inds = data.indicators || [];
+    if (!inds.length) throw new Error('Показатели не найдены в PDF. Попробуй другой файл.');
+
+    // Заполняем форму
+    inds.forEach(ind => { S.inds[ind.key] = ind.value; });
+    S.updatedAt  = new Date().toISOString();
+    S.lastAnalysis = data;
+    save();
+
+    progress.style.display = 'none';
+    success.style.display  = 'block';
+    document.getElementById('pdf-found-text').textContent =
+      'Найдено ' + inds.length + ' показателей — данные заполнены';
+
+    buildForm(); // обновить форму с новыми значениями
+
+    if (window.Telegram?.WebApp?.HapticFeedback)
+      Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+
+    // Через 2 сек переходим на разбор
+    setTimeout(() => go('analysis'), 2000);
+
+  } catch(e) {
+    progress.style.display = 'none';
+    errEl.style.display    = 'block';
+    document.getElementById('pdf-error-text').textContent = e.message || 'Ошибка загрузки';
+  }
 }
 
 function saveInds() {
