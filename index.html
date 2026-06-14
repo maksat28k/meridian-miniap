@@ -1029,6 +1029,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Синхронизируем анализы с бэкенда в фоне
     syncLastAnalysis(S.telegramId).then(() => { if (S.profile) refreshHome(); });
+  } else {
+    // Открыто не через Telegram (браузер) — используем сохранённый ID или генерируем временный
+    if (!S.telegramId) {
+      S.telegramId = 'web_' + Math.random().toString(36).slice(2, 10);
+      save();
+    }
   }
 
   if (S.profile) { go('home'); } else { /* остаёмся на splash */ }
