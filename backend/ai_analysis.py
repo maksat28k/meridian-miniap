@@ -1,12 +1,16 @@
-import google.generativeai as genai
+from google import genai
 import json
 import re
 import os
 
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+_client = None
 
-genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+def get_client():
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=GEMINI_KEY)
+    return _client
 
 REFERENCE_RANGES = {
     'hemoglobin':    {'m': (13.2, 17.5), 'f': (11.7, 15.5), 'unit': 'г/дл',     'name': 'Гемоглобин'},
@@ -139,6 +143,7 @@ def analyze_with_ai(indicators: dict, gender: str, age: int, name: str, raw_text
     gender_text = "мужчина" if gender == 'm' else "женщина"
     summary = build_indicators_summary(indicators, gender)
 
+    pdf_context = ("ДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ ИЗ PDF:\n" + raw_text[:1500]) if raw_text else ""
     prompt = f"""{SYSTEM_PROMPT}
 
 ПАЦИЕНТ: {name}, {age} лет, {gender_text}
@@ -146,14 +151,14 @@ def analyze_with_ai(indicators: dict, gender: str, age: int, name: str, raw_text
 РЕЗУЛЬТАТЫ АНАЛИЗОВ:
 {summary}
 
-{f"ДОПОЛНИТЕЛЬНЫЙ КОНТЕКСТ ИЗ PDF:
-{raw_text[:1500]}" if raw_text else ""}
+{pdf_context}
 
 Дай системный разбор. Найди паттерны между показателями. Объясни простым языком.
 Верни строго валидный JSON."""
 
     try:
-        response = model.generate_content(prompt)
+        client = get_client()
+        response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
         text = response.text.strip()
 
         # Извлекаем JSON из ответа
