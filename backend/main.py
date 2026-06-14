@@ -215,6 +215,107 @@ def get_analyses(telegram_id: str):
         })
     return result
 
+@app.get("/api/full-analysis/{telegram_id}")
+async def full_analysis(telegram_id: str):
+    """Комплексный разбор на основе ВСЕХ анализов пользователя с динамикой."""
+    db = get_db()
+    user = db.execute("SELECT * FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
+    if not user:
+        raise HTTPException(404, "User not found")
+    user = dict(user)
+
+    analyses = db.execute(
+        "SELECT id, indicators, ai_result, created_at FROM analyses WHERE user_id=? ORDER BY created_at ASC",
+        (user['id'],)
+    ).fetchall()
+    db.close()
+
+    if not analyses:
+        raise HTTPException(404, "No analyses found")
+
+    # Строим хронологию показателей
+    timeline = []
+    all_keys = set()
+    for a in analyses:
+        inds = json.loads(a['indicators'])
+        all_keys.update(inds.keys())
+        timeline.append({'date': a['created_at'][:10], 'indicators': inds})
+
+    # Динамика: сравниваем первый и последний
+    first = timeline[0]['indicators']
+    last  = timeline[-1]['indicators']
+    dynamics = []
+    for k in all_keys:
+        if k in first and k in last:
+            diff = last[k] - first[k]
+            pct  = round(diff / first[k] * 100, 1) if first[k] else 0
+            dynamics.append({'key': k, 'first': first[k], 'last': last[k], 'diff': round(diff,2), 'pct': pct})
+
+    # Полный промпт для AI
+    gender_text = "мужчина" if user.get('gender') == 'm' else "женщина"
+    age  = user.get('age', 25)
+    name = user.get('name', 'Пациент')
+
+    timeline_text = ""
+    for t in timeline:
+        lines = ', '.join(f"{k}={v}" for k,v in t['indicators'].items())
+        timeline_text += f"  {t['date']}: {lines}\n"
+
+    dynamics_text = ""
+    for d in dynamics:
+        arrow = "↑" if d['diff'] > 0 else "↓"
+        dynamics_text += f"  {d['key']}: {d['first']} → {d['last']} ({arrow}{abs(d['pct'])}%)\n"
+
+    prompt = f"""Ты — медицинский аналитик Meridian. Источники знаний: PubMed, NEJM, JAMA, Lancet, Cochrane, клинические руководства AHA/ESC/ADA/WHO.
+
+ПАЦИЕНТ: {name}, {age} лет, {gender_text}
+КОЛИЧЕСТВО АНАЛИЗОВ: {len(analyses)} (с {timeline[0]['date']} по {timeline[-1]['date']})
+
+ХРОНОЛОГИЯ ПОКАЗАТЕЛЕЙ:
+{timeline_text}
+
+ДИНАМИКА (первый → последний):
+{dynamics_text}
+
+Сделай КОМПЛЕКСНЫЙ СИСТЕМНЫЙ РАЗБОР на основе ВСЕЙ истории анализов:
+1. Что улучшилось и что ухудшилось с доказательной базой
+2. Долгосрочные тренды и риски (механизмы + источники)
+3. Паттерны которые видны только при сравнении нескольких анализов
+4. Приоритетный протокол действий с дозами и сроками
+
+Верни строго валидный JSON:
+{{
+  "summary": "2-3 предложения: общая динамика здоровья за весь период",
+  "period": "{timeline[0]['date']} — {timeline[-1]['date']}",
+  "analyses_count": {len(analyses)},
+  "improved": [{{"key":"показатель","name":"название","from":0,"to":0,"interpretation":"что это значит для жизни"}}],
+  "worsened": [{{"key":"показатель","name":"название","from":0,"to":0,"interpretation":"что это значит","urgency":"high/medium/low"}}],
+  "stable": [{{"key":"показатель","value":0,"assessment":"оценка"}}],
+  "patterns": [{{"title":"","description":"","indicators":[],"evidence":""}}],
+  "risks": [{{"level":"high/medium/low","title":"","description":"","science":""}}],
+  "protocol": [{{"priority":1,"action":"","reason":"","timeframe":"","evidence":""}}],
+  "lifestyle": {{"nutrition":"","supplements":"","tests":"","doctor":""}},
+  "positive": ""
+}}"""
+
+    try:
+        from ai_analysis import get_client
+        loop = asyncio.get_event_loop()
+        def call_gemini():
+            import re
+            client = get_client()
+            resp = client.models.generate_content(model='models/gemini-2.5-flash', contents=prompt)
+            text = resp.text.strip()
+            m = re.search(r'\{.*\}', text, re.DOTALL)
+            return json.loads(m.group()) if m else json.loads(text)
+        result = await loop.run_in_executor(executor, call_gemini)
+    except Exception as e:
+        result = {"summary": f"Ошибка AI: {e}", "error": True}
+
+    result['dynamics'] = dynamics
+    result['timeline'] = timeline
+    return result
+
 @app.post("/api/chat")
 async def chat(
     telegram_id: str = Form(...),

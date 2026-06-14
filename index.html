@@ -569,6 +569,24 @@ body {
     <span class="ai-more" onclick="go('analysis')">Смотреть разбор ›</span>
   </div>
 
+  <!-- Динамика -->
+  <div class="sec">
+    <div class="sec-hdr">
+      <span class="sec-title">ДИНАМИКА ЗДОРОВЬЯ</span>
+      <span class="sec-link" onclick="goFullAnalysis()">Разбор →</span>
+    </div>
+    <div id="h-dynamics">
+      <div style="background:var(--card);border-radius:16px;padding:16px 18px;display:flex;align-items:center;gap:14px;cursor:pointer" onclick="goFullAnalysis()">
+        <div style="font-size:28px">📈</div>
+        <div>
+          <div style="font-weight:600;font-size:14px;margin-bottom:3px">Комплексный разбор</div>
+          <div style="font-size:12px;color:var(--text2)">AI анализирует все загруженные анализы и строит динамику</div>
+        </div>
+        <div style="margin-left:auto;color:var(--text2)">›</div>
+      </div>
+    </div>
+  </div>
+
   <div class="sec">
     <div class="sec-hdr">
       <span class="sec-title">ДОКУМЕНТЫ</span>
@@ -698,6 +716,21 @@ body {
         <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
+  </div>
+</div>
+
+<!-- ══ FULL ANALYSIS ══ -->
+<div id="full-analysis" class="screen">
+  <div class="ana-hero">
+    <button class="back-btn" onclick="go('home')" style="margin-bottom:10px">‹ Назад</button>
+    <div class="ana-title">Динамика здоровья</div>
+    <div class="ana-sub" id="fa-period">Комплексный разбор всех анализов</div>
+  </div>
+  <div id="fa-body" style="padding:14px 0">
+    <div style="text-align:center;padding:40px 20px">
+      <div class="pdf-spinner" style="margin:0 auto 16px"></div>
+      <div style="font-size:14px;color:var(--text2)">AI анализирует все твои данные...</div>
+    </div>
   </div>
 </div>
 
@@ -990,7 +1023,7 @@ function save() { localStorage.setItem('mrd', JSON.stringify(S)); }
 function go(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
-  const navScreens = ['home','indicators','analysis','share-screen','profile','ai-chat'];
+  const navScreens = ['home','indicators','analysis','share-screen','profile','ai-chat','full-analysis'];
   document.getElementById('bnav').classList.toggle('show', navScreens.includes(id));
   document.querySelectorAll('.ni').forEach(n => n.classList.remove('on'));
   if (id==='home')                          document.getElementById('ni-home').classList.add('on');
@@ -1526,6 +1559,126 @@ function refreshProfile() {
       <div class="prof-cell-l">${l}</div>
       <div class="prof-cell-v">${v}</div>
     </div>`).join('');
+}
+
+// ── FULL ANALYSIS ──
+async function goFullAnalysis() {
+  go('full-analysis');
+  const body = document.getElementById('fa-body');
+  body.innerHTML = `<div style="text-align:center;padding:40px 20px">
+    <div class="pdf-spinner" style="margin:0 auto 16px"></div>
+    <div style="font-size:14px;color:var(--text2)">AI анализирует все твои данные...</div>
+  </div>`;
+
+  try {
+    const res = await fetch(`${API_URL}/api/full-analysis/${S.telegramId || '0'}`);
+    if (!res.ok) throw new Error(res.status === 404 ? 'Нет данных. Загрузи хотя бы один анализ.' : 'Ошибка сервера');
+    const d = await res.json();
+    S.fullAnalysis = d; save();
+    renderFullAnalysis(d);
+  } catch(e) {
+    body.innerHTML = `<div class="ana-card" style="margin:20px;text-align:center;padding:32px">
+      <div style="font-size:36px;margin-bottom:12px">📊</div>
+      <div style="font-weight:600;margin-bottom:8px">Нет данных</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:18px">${e.message}</div>
+      <button class="btn btn-primary" onclick="go('indicators')" style="max-width:200px">Загрузить анализы</button>
+    </div>`;
+  }
+}
+
+function renderFullAnalysis(d) {
+  document.getElementById('fa-period').textContent =
+    d.analyses_count > 1 ? `${d.analyses_count} анализа · ${d.period}` : 'На основе 1 анализа';
+
+  let html = '';
+
+  // Общий вывод
+  html += `<div class="ana-card">
+    <div class="ana-card-title">🧬 ОБЩАЯ ДИНАМИКА</div>
+    <div class="ana-card-body" style="line-height:1.6">${d.summary}</div>
+    ${d.positive ? `<div style="margin-top:12px;padding:10px 14px;background:#e8f5f3;border-radius:10px;font-size:13px;color:#1a6b61">${d.positive}</div>` : ''}
+  </div>`;
+
+  // Улучшилось
+  if (d.improved?.length) html += `<div class="ana-card">
+    <div class="ana-card-title" style="color:var(--ok)">✅ УЛУЧШИЛОСЬ</div>
+    ${d.improved.map(i=>`<div class="risk-row">
+      <span class="rbadge" style="background:#dcfce7;color:#16a34a">↑ лучше</span>
+      <div class="risk-txt"><b>${i.name}:</b> ${i.from} → ${i.to}<br>
+      <span style="font-size:12px;color:var(--text2)">${i.interpretation}</span></div>
+    </div>`).join('')}
+  </div>`;
+
+  // Ухудшилось
+  if (d.worsened?.length) html += `<div class="ana-card">
+    <div class="ana-card-title" style="color:var(--bad)">⚠ ТРЕБУЕТ ВНИМАНИЯ</div>
+    ${d.worsened.map(i=>`<div class="risk-row">
+      <span class="rbadge ${i.urgency==='high'?'rb-hi':i.urgency==='medium'?'rb-md':'rb-lo'}">↓ хуже</span>
+      <div class="risk-txt"><b>${i.name}:</b> ${i.from} → ${i.to}<br>
+      <span style="font-size:12px;color:var(--text2)">${i.interpretation}</span></div>
+    </div>`).join('')}
+  </div>`;
+
+  // Паттерны
+  if (d.patterns?.length) html += `<div class="ana-card">
+    <div class="ana-card-title">🔗 ПАТТЕРНЫ</div>
+    ${d.patterns.map(p=>`<div style="margin-bottom:14px">
+      <div style="font-weight:600;font-size:14px;margin-bottom:4px">${p.title}</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.5">${p.description}</div>
+      ${p.evidence?`<div style="margin-top:4px;font-size:11px;color:var(--accent)">${p.evidence}</div>`:''}
+    </div>`).join('<hr style="border:none;border-top:1px solid var(--border);margin:10px 0">')}
+  </div>`;
+
+  // Риски
+  if (d.risks?.length) html += `<div class="ana-card">
+    <div class="ana-card-title">🔮 РИСКИ</div>
+    ${d.risks.map(r=>`<div class="risk-row">
+      <span class="rbadge ${r.level==='high'?'rb-hi':r.level==='medium'?'rb-md':'rb-lo'}">${r.level==='high'?'высокий':r.level==='medium'?'средний':'низкий'}</span>
+      <div class="risk-txt"><b>${r.title}</b><br>
+      <span style="font-size:12px;color:var(--text2)">${r.description}</span>
+      ${r.science?`<br><span style="font-size:11px;color:var(--accent)">${r.science}</span>`:''}
+      </div>
+    </div>`).join('')}
+  </div>`;
+
+  // Протокол
+  if (d.protocol?.length) html += `<div class="ana-card">
+    <div class="ana-card-title">📋 ПРОТОКОЛ ДЕЙСТВИЙ</div>
+    ${d.protocol.map((a,i)=>`<div class="prot-row">
+      <div class="prot-num">${a.priority||i+1}</div>
+      <div class="prot-txt"><b>${a.action}</b><br>
+      <span style="font-size:12px;color:var(--text2)">${a.reason||''} ${a.timeframe?'· '+a.timeframe:''}</span>
+      ${a.evidence?`<br><span style="font-size:11px;color:var(--accent)">${a.evidence}</span>`:''}
+      </div>
+    </div>`).join('')}
+  </div>`;
+
+  // Рекомендации
+  const ls = d.lifestyle;
+  if (ls && (ls.nutrition||ls.supplements||ls.tests||ls.doctor)) html += `<div class="ana-card">
+    <div class="ana-card-title">🌿 РЕКОМЕНДАЦИИ</div>
+    ${ls.nutrition?`<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px">ПИТАНИЕ</div><div style="font-size:13px">${ls.nutrition}</div></div>`:''}
+    ${ls.supplements?`<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px">ДОБАВКИ</div><div style="font-size:13px">${ls.supplements}</div></div>`:''}
+    ${ls.tests?`<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px">ПЕРЕСДАТЬ</div><div style="font-size:13px">${ls.tests}</div></div>`:''}
+    ${ls.doctor?`<div><div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:4px">ВРАЧ</div><div style="font-size:13px">${ls.doctor}</div></div>`:''}
+  </div>`;
+
+  // Хронология
+  if (d.timeline?.length > 1) {
+    html += `<div class="ana-card">
+      <div class="ana-card-title">📅 ИСТОРИЯ АНАЛИЗОВ</div>
+      ${d.timeline.map((t,i)=>`<div style="display:flex;align-items:center;gap:10px;padding:6px 0;${i<d.timeline.length-1?'border-bottom:1px solid var(--border)':''}">
+        <div style="font-size:12px;color:var(--text2);min-width:80px">${t.date}</div>
+        <div style="font-size:12px;color:var(--text)">${Object.keys(t.indicators).length} показателей</div>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  html += `<div style="padding:8px 20px 28px;font-size:11px;color:var(--text2);text-align:center;line-height:1.6">
+    Разбор основан на PubMed, NEJM, JAMA, Cochrane.<br>Не заменяет консультацию врача.
+  </div>`;
+
+  document.getElementById('fa-body').innerHTML = html;
 }
 
 // ── AI CHAT ──
