@@ -1,0 +1,115 @@
+import pdfplumber
+import re
+from typing import Optional
+
+# Словарь показателей для поиска в PDF
+MARKER_ALIASES = {
+    'hemoglobin':    ['гемоглобин', 'hemoglobin', 'hgb', 'hb'],
+    'hematocrit':    ['гематокрит', 'hematocrit', 'hct'],
+    'platelets':     ['тромбоциты', 'platelets', 'plt'],
+    'esr':           ['соэ', 'soe', 'esr', 'скорость оседания'],
+    'leukocytes':    ['лейкоциты', 'wbc', 'leukocytes'],
+    'erythrocytes':  ['эритроциты', 'rbc', 'erythrocytes'],
+    'glucose':       ['глюкоза', 'glucose', 'сахар'],
+    'cholesterol':   ['холестерин', 'cholesterol', 'общий холестерин'],
+    'hdl':           ['hdl', 'лпвп', 'холестерин лпвп', 'липопротеин высокой'],
+    'ldl':           ['ldl', 'лпнп', 'холестерин лпнп', 'липопротеин низкой'],
+    'triglycerides': ['триглицериды', 'triglycerides', 'tg'],
+    'insulin':       ['инсулин', 'insulin'],
+    'hba1c':         ['гликированный', 'hba1c', 'гликозилированный', 'hemoglobin a1c'],
+    'ferritin':      ['ферритин', 'ferritin'],
+    'iron':          ['железо сыворот', 'serum iron', 'железо,'],
+    'tibc':          ['ожсс', 'tibc', 'общая железосвязывающая'],
+    'transferrin':   ['трансферрин', 'transferrin'],
+    'vitamin_d':     ['витамин d', '25-oh', '25(oh)', 'кальцидиол', 'cholecalciferol'],
+    'b12':           ['витамин b12', 'b12', 'кобаламин', 'cobalamin'],
+    'folate':        ['фолат', 'фолиевая', 'folate', 'folic acid'],
+    'tsh':           ['ттг', 'tsh', 'тиреотропный'],
+    't3_free':       ['т3 свободный', 'ft3', 'free t3', 'трийодтиронин св'],
+    't4_free':       ['т4 свободный', 'ft4', 'free t4', 'тироксин св'],
+    'tpo_ab':        ['ат-тпо', 'anti-tpo', 'тиреопероксидаза'],
+    'crp':           ['срб', 'crp', 'c-реактивный', 'c reactive'],
+    'alt':           ['алт', 'alt', 'аланинаминотрансфераза'],
+    'ast':           ['аст', 'ast', 'аспартатаминотрансфераза'],
+    'ggt':           ['ггт', 'ggt', 'гамма-глутамил'],
+    'bilirubin':     ['билирубин общий', 'total bilirubin', 'bilirubin total'],
+    'albumin':       ['альбумин', 'albumin'],
+    'creatinine':    ['креатинин', 'creatinine'],
+    'urea':          ['мочевина', 'urea', 'bun'],
+    'uric_acid':     ['мочевая кислота', 'uric acid', 'urate'],
+    'cortisol':      ['кортизол', 'cortisol'],
+    'testosterone':  ['тестостерон', 'testosterone'],
+    'estradiol':     ['эстрадиол', 'estradiol', 'e2'],
+    'progesterone':  ['прогестерон', 'progesterone'],
+    'vitamin_b9':    ['витамин b9', 'фолиевая кислота'],
+    'magnesium':     ['магний', 'magnesium', 'mg'],
+    'calcium':       ['кальций', 'calcium', 'ca'],
+    'potassium':     ['калий', 'potassium', 'k '],
+    'sodium':        ['натрий', 'sodium', 'na '],
+    'phosphorus':    ['фосфор', 'phosphorus'],
+    'zinc':          ['цинк', 'zinc', 'zn'],
+    'omega3':        ['омега-3', 'omega-3', 'dha', 'epa'],
+    'igf1':          ['igf-1', 'инсулиноподобный', 'соматомедин'],
+    'dhea':          ['дгэа', 'dhea', 'дегидроэпиандростерон'],
+}
+
+def extract_number(text: str) -> Optional[float]:
+    """Извлекает первое число из строки."""
+    text = text.replace(',', '.').replace(' ', '')
+    m = re.search(r'(\d+\.?\d*)', text)
+    return float(m.group(1)) if m else None
+
+def parse_pdf(file_path: str) -> dict:
+    """Парсит PDF и возвращает словарь найденных показателей."""
+    results = {}
+    raw_text = ""
+
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                text = page.extract_text() or ""
+                raw_text += text + "\n"
+
+                # Пробуем таблицы
+                for table in page.extract_tables():
+                    if not table:
+                        continue
+                    for row in table:
+                        if not row:
+                            continue
+                        row_text = ' '.join([str(c).lower() for c in row if c])
+                        for key, aliases in MARKER_ALIASES.items():
+                            if key in results:
+                                continue
+                            for alias in aliases:
+                                if alias in row_text:
+                                    # Ищем число в ячейках строки
+                                    for cell in row:
+                                        if cell:
+                                            val = extract_number(str(cell))
+                                            if val and val > 0:
+                                                results[key] = val
+                                                break
+                                    break
+
+        # Построчный поиск в тексте
+        lines = raw_text.lower().split('\n')
+        for line in lines:
+            for key, aliases in MARKER_ALIASES.items():
+                if key in results:
+                    continue
+                for alias in aliases:
+                    if alias in line:
+                        val = extract_number(line)
+                        if val and val > 0:
+                            results[key] = val
+                        break
+
+    except Exception as e:
+        print(f"PDF parse error: {e}")
+
+    return {
+        'indicators': results,
+        'raw_text': raw_text[:3000],  # первые 3000 символов для AI
+        'found_count': len(results)
+    }

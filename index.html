@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Meridian</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+:root {
+  --bg: #f5f7fa;
+  --card: #ffffff;
+  --accent: #2e9b8f;
+  --accent-dark: #1a6b61;
+  --accent-light: #e8f5f3;
+  --text: #1a3a4a;
+  --text2: #64748b;
+  --border: #e2e8f0;
+  --ok: #10b981;
+  --warn: #f59e0b;
+  --bad: #ef4444;
+  --shadow: 0 2px 16px rgba(0,0,0,0.07);
+}
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+}
+.screen { display:none; min-height:100vh; padding-bottom:84px; }
+.screen.active { display:block; }
+
+/* ── SPLASH ── */
+#splash {
+  background: linear-gradient(160deg, #dff2ef 0%, #f5f7fa 55%, #edf0f8 100%);
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 48px 24px 40px;
+  text-align: center;
+}
+#splash.active { display: flex; }
+
+.logo { display:flex; align-items:center; gap:10px; margin-bottom:40px; }
+.logo-text { font-size:18px; font-weight:700; letter-spacing:4px; color:var(--text); }
+
+/* ── SPHERE ── */
+.sphere-wrap {
+  position: relative;
+  width: 250px; height: 250px;
+  margin: 0 auto 36px;
+  perspective: 520px;
+  transform-style: preserve-3d;
+}
+.sphere-core {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 104px; height: 104px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 34%, #a8e6df 0%, #2e9b8f 52%, #1a5c54 100%);
+  box-shadow:
+    0 0 60px rgba(46,155,143,0.40),
+    0 0 120px rgba(46,155,143,0.15),
+    inset 0 0 30px rgba(255,255,255,0.22);
+  z-index: 2;
+}
+.ring {
+  position: absolute; top: 50%; left: 50%;
+  border-radius: 50%;
+  border: 1.5px solid rgba(46,155,143,0.38);
+  transform-style: preserve-3d;
+}
+.r1 { width:218px; height:218px; margin:-109px; animation: rotR1 10s linear infinite; }
+.r2 { width:190px; height:190px; margin:-95px;  animation: rotR2 14s linear infinite; }
+.r3 { width:162px; height:162px; margin:-81px;  animation: rotR3 18s linear infinite reverse; }
+@keyframes rotR1 {
+  from { transform: rotateX(72deg) rotateZ(0deg); }
+  to   { transform: rotateX(72deg) rotateZ(360deg); }
+}
+@keyframes rotR2 {
+  from { transform: rotateX(25deg) rotateY(0deg) rotateZ(55deg); }
+  to   { transform: rotateX(25deg) rotateY(360deg) rotateZ(55deg); }
+}
+@keyframes rotR3 {
+  from { transform: rotateX(52deg) rotateY(0deg) rotateZ(25deg); }
+  to   { transform: rotateX(52deg) rotateY(360deg) rotateZ(25deg); }
+}
+
+/* floating health cards */
+.sphere-tag {
+  position: absolute;
+  background: white;
+  border-radius: 10px;
+  padding: 7px 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  z-index: 10;
+}
+.sphere-tag .tag-label { color: var(--text2); font-size: 10px; margin-bottom: 2px; }
+.sphere-tag .tag-val { color: var(--warn); font-weight: 600; }
+.sphere-tag .tag-val.ok { color: var(--ok); }
+.tag1 { top: 14%; right: -10px; }
+.tag2 { bottom: 22%; right: -14px; }
+.tag3 { bottom: 12%; left: -14px; }
+
+.splash-title { font-size: 26px; font-weight: 700; line-height: 1.25; margin-bottom: 10px; color: var(--text); }
+.splash-title span { color: var(--accent); }
+.splash-quote {
+  font-size: 13px; color: var(--text2); line-height: 1.7;
+  max-width: 284px; margin: 0 auto 36px; font-style: italic;
+}
+.splash-quote em { color: var(--text); font-style: normal; font-weight: 500; }
+
+/* ── BUTTONS ── */
+.btn { border:none; border-radius:14px; font-family:inherit; font-weight:600; cursor:pointer; transition:all 0.15s; display:block; width:100%; }
+.btn:active { transform:scale(0.97); }
+.btn-primary { background:var(--accent); color:#fff; padding:16px; font-size:16px; }
+.btn-ghost { background:transparent; color:var(--accent); border:1.5px solid var(--border); padding:14px; font-size:15px; margin-top:12px; }
+
+/* ── ONBOARDING ── */
+#onboarding { background:var(--bg); padding-bottom: 0; }
+.ob-step { display:none; flex-direction:column; min-height:100vh; padding: 52px 24px 32px; }
+.ob-step.active { display:flex; }
+.prog-bar { height:4px; background:var(--border); border-radius:2px; margin-bottom:28px; }
+.prog-fill { height:100%; background:var(--accent); border-radius:2px; transition:width .3s; }
+.step-n { font-size:11px; font-weight:700; color:var(--accent); letter-spacing:2px; margin-bottom:16px; }
+.step-h { font-size:24px; font-weight:700; line-height:1.3; margin-bottom:8px; }
+.step-s { font-size:14px; color:var(--text2); margin-bottom:28px; line-height:1.5; }
+.step-body { flex:1; }
+.step-foot { padding-top:16px; }
+
+.field {
+  width:100%; padding:16px; border-radius:12px;
+  border:1.5px solid var(--border); background:var(--card);
+  font-family:inherit; font-size:16px; color:var(--text);
+  outline:none; margin-bottom:12px; transition:border-color .2s;
+}
+.field:focus { border-color:var(--accent); }
+
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.pick {
+  padding:22px 12px; border-radius:14px; border:1.5px solid var(--border);
+  background:var(--card); font-family:inherit; font-size:14px; font-weight:500;
+  color:var(--text); cursor:pointer; text-align:center; transition:all .15s;
+}
+.pick.on { border-color:var(--accent); background:var(--accent-light); color:var(--accent-dark); }
+
+/* ── HOME ── */
+.page-top {
+  padding: 18px 20px 0;
+  background: linear-gradient(180deg, #dff2ef 0%, var(--bg) 100%);
+}
+.top-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+.hdr-logo { display:flex; align-items:center; gap:8px; }
+.hdr-logo-txt { font-size:14px; font-weight:700; letter-spacing:3px; color:var(--text); }
+
+.user-card {
+  background:var(--card); border-radius:16px; padding:15px 16px;
+  display:flex; align-items:center; gap:13px;
+  box-shadow:var(--shadow); margin-bottom:14px; cursor:pointer;
+}
+.avatar {
+  width:46px; height:46px; border-radius:50%;
+  background:linear-gradient(135deg,var(--accent),var(--accent-dark));
+  display:flex; align-items:center; justify-content:center;
+  color:#fff; font-size:19px; font-weight:700; flex-shrink:0;
+}
+.u-name { font-size:15px; font-weight:600; }
+.u-sub { font-size:12px; color:var(--text2); margin-top:2px; }
+.arr { color:var(--text2); margin-left:auto; font-size:18px; }
+
+.sum-card {
+  background:var(--card); border-radius:16px; padding:16px;
+  box-shadow:var(--shadow); margin-bottom:4px;
+}
+.sum-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.sum-title { font-size:14px; font-weight:600; }
+.badge { font-size:11px; font-weight:600; padding:4px 10px; border-radius:20px; background:#fff3e0; color:var(--warn); }
+.badge.good { background:#e6f7f4; color:var(--ok); }
+.badge.empty { background:var(--bg); color:var(--text2); }
+.sum-counts { font-size:13px; color:var(--text2); margin-bottom:4px; }
+.sum-counts strong { color:var(--bad); }
+.sum-link { font-size:13px; color:var(--accent); font-weight:500; cursor:pointer; }
+.sum-date { font-size:11px; color:var(--text2); margin-top:6px; }
+
+.sec { padding:14px 20px 0; }
+.sec-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
+.sec-title { font-size:11px; font-weight:700; letter-spacing:1.5px; color:var(--text2); }
+.sec-link { font-size:13px; color:var(--accent); font-weight:500; cursor:pointer; }
+
+.ind-row {
+  background:var(--card); border-radius:12px; padding:13px 16px;
+  display:flex; align-items:center; gap:11px;
+  margin-bottom:8px; box-shadow:var(--shadow); cursor:pointer;
+  transition:transform .12s;
+}
+.ind-row:active { transform:scale(0.99); }
+.dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.dot.ok   { background:var(--text2); opacity:.35; }
+.dot.warn { background:var(--warn); }
+.dot.bad  { background:var(--bad); }
+.dot.none { background:#cbd5e1; }
+.ind-name { font-size:14px; font-weight:500; flex:1; }
+.ind-val  { font-size:16px; font-weight:700; }
+.ind-u   { font-size:11px; color:var(--text2); margin-left:2px; }
+.arr-sm  { color:#d1d9e0; font-size:14px; }
+
+.ai-card {
+  background:linear-gradient(135deg,#1a3a4a 0%,#1a5c54 100%);
+  border-radius:16px; padding:18px; margin:0 20px 8px;
+  box-shadow:0 4px 20px rgba(26,58,74,0.18);
+}
+.ai-lbl { font-size:10px; font-weight:700; color:rgba(168,230,223,0.9); letter-spacing:2px; margin-bottom:8px; }
+.ai-lbl::before { content:'★ '; color:#f59e0b; }
+.ai-body { font-size:13px; color:rgba(255,255,255,0.84); line-height:1.68; }
+.ai-more { font-size:13px; color:rgba(168,230,223,0.9); font-weight:500; margin-top:10px; display:block; cursor:pointer; }
+
+.doc-row {
+  background:var(--card); border-radius:12px; padding:13px 16px;
+  display:flex; align-items:center; gap:12px; margin-bottom:8px;
+  box-shadow:var(--shadow); cursor:pointer;
+}
+.doc-ic { width:40px; height:40px; border-radius:10px; background:var(--accent-light); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+.share-block {
+  margin:14px 20px 6px;
+  background:var(--card); border:1.5px solid var(--border);
+  border-radius:16px; padding:16px; cursor:pointer; transition:transform .12s;
+}
+.share-block:active { transform:scale(0.99); }
+.share-top { display:flex; align-items:flex-start; gap:13px; }
+.share-ic { width:40px; height:40px; border-radius:11px; background:var(--accent-light); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.share-title { font-size:14px; font-weight:600; margin-bottom:3px; }
+.share-sub { font-size:12px; color:var(--text2); line-height:1.45; }
+.share-cta {
+  margin-top:13px; background:var(--accent); color:#fff;
+  border:none; border-radius:10px; padding:12px;
+  font-family:inherit; font-size:14px; font-weight:600; width:100%; cursor:pointer;
+}
+
+/* ── INDICATORS SCREEN ── */
+.scr-hdr { padding:20px 20px 0; margin-bottom:14px; }
+.back-btn {
+  display:flex; align-items:center; gap:6px; color:var(--accent);
+  font-size:14px; font-weight:500; cursor:pointer;
+  background:none; border:none; font-family:inherit; margin-bottom:14px; padding:0;
+}
+.pg-title { font-size:22px; font-weight:700; }
+.pg-sub { font-size:13px; color:var(--text2); margin-top:3px; }
+
+.ind-g { padding:0 20px 12px; }
+.ind-g-title { font-size:11px; font-weight:700; letter-spacing:1.5px; color:var(--text2); padding-top:6px; margin-bottom:10px; }
+
+.ind-inp-row {
+  background:var(--card); border-radius:12px; padding:13px 16px;
+  display:flex; align-items:center; gap:11px; margin-bottom:8px;
+  box-shadow:var(--shadow);
+}
+.ind-inp-info { flex:1; }
+.ind-inp-name { font-size:14px; font-weight:500; }
+.ind-inp-ref { font-size:11px; color:var(--text2); margin-top:2px; }
+.ind-inp {
+  width:78px; padding:8px 10px; border-radius:8px;
+  border:1.5px solid var(--border); background:var(--bg);
+  font-family:inherit; font-size:14px; font-weight:600;
+  color:var(--text); text-align:center; outline:none; transition:border-color .2s;
+}
+.ind-inp:focus { border-color:var(--accent); background:#fff; }
+.ind-inp.s-ok   { border-color:var(--ok); }
+.ind-inp.s-warn { border-color:var(--warn); }
+.ind-inp.s-bad  { border-color:var(--bad); }
+.ind-inp-unit { font-size:11px; color:var(--text2); width:42px; text-align:right; line-height:1.3; }
+
+/* ── ANALYSIS SCREEN ── */
+.ana-hero {
+  padding:24px 20px 18px;
+  background:linear-gradient(160deg,#dff2ef,#f5f7fa);
+}
+.ana-title { font-size:20px; font-weight:700; margin-bottom:4px; }
+.ana-sub { font-size:13px; color:var(--text2); }
+
+.ana-card {
+  background:var(--card); border-radius:16px; padding:18px;
+  margin:0 20px 12px; box-shadow:var(--shadow);
+}
+.ana-card-title { font-size:12px; font-weight:700; color:var(--accent); letter-spacing:1px; margin-bottom:12px; }
+.ana-card-body { font-size:14px; line-height:1.7; }
+
+.risk-row { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); }
+.risk-row:last-child { border-bottom:none; padding-bottom:0; }
+.rbadge { font-size:10px; font-weight:700; padding:3px 8px; border-radius:6px; flex-shrink:0; margin-top:2px; }
+.rb-hi  { background:#fee2e2; color:var(--bad); }
+.rb-md  { background:#fef3c7; color:#d97706; }
+.rb-lo  { background:#dcfce7; color:#16a34a; }
+.risk-txt { font-size:13px; line-height:1.5; }
+
+.prot-row { display:flex; gap:11px; padding:10px 0; border-bottom:1px solid var(--border); }
+.prot-row:last-child { border-bottom:none; padding-bottom:0; }
+.prot-num {
+  width:24px; height:24px; border-radius:50%;
+  background:var(--accent-light); color:var(--accent);
+  font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center;
+  flex-shrink:0; margin-top:1px;
+}
+.prot-txt { font-size:13px; line-height:1.55; }
+
+/* ── SHARE SCREEN ── */
+.share-doc {
+  background:var(--card); border-radius:16px; padding:20px;
+  margin:0 20px 16px; box-shadow:var(--shadow);
+  font-size:13px; line-height:1.8; white-space:pre-line; color:var(--text);
+}
+.share-btns { padding:0 20px; display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.s-copy { background:var(--accent); color:#fff; border:none; border-radius:12px; padding:14px; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+.s-share { background:var(--card); color:var(--accent); border:1.5px solid var(--accent); border-radius:12px; padding:14px; font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+.share-note { font-size:11px; color:var(--text2); text-align:center; padding:12px 24px 20px; line-height:1.55; }
+
+/* ── PROFILE SCREEN ── */
+.prof-top-card {
+  background:linear-gradient(135deg,var(--accent),var(--accent-dark));
+  border-radius:20px; padding:22px; margin:0 20px 14px;
+}
+.av-lg {
+  width:62px; height:62px; border-radius:50%;
+  background:rgba(255,255,255,0.22); display:flex; align-items:center;
+  justify-content:center; color:#fff; font-size:26px; font-weight:700; margin-bottom:12px;
+}
+.pn-lg { font-size:20px; font-weight:700; color:#fff; }
+.ps-lg { font-size:13px; color:rgba(255,255,255,0.75); margin-top:3px; }
+
+.set-sec { padding:0 20px 14px; }
+.set-item {
+  background:var(--card); border-radius:12px; padding:15px 16px;
+  display:flex; align-items:center; justify-content:space-between;
+  margin-bottom:8px; box-shadow:var(--shadow); cursor:pointer;
+}
+.set-left { display:flex; align-items:center; gap:12px; }
+.set-ic { width:36px; height:36px; border-radius:10px; background:var(--accent-light); display:flex; align-items:center; justify-content:center; font-size:18px; }
+.set-title { font-size:14px; font-weight:500; }
+.set-sub { font-size:12px; color:var(--text2); margin-top:2px; }
+.prof-data { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.prof-cell { padding:10px; background:var(--bg); border-radius:10px; }
+.prof-cell-l { font-size:11px; color:var(--text2); margin-bottom:2px; }
+.prof-cell-v { font-size:14px; font-weight:600; }
+
+/* ── BOTTOM NAV ── */
+.bnav {
+  position:fixed; bottom:0; left:0; right:0;
+  background:var(--card); border-top:1px solid var(--border);
+  display:none; grid-template-columns:repeat(3,1fr);
+  padding:8px 0 max(10px,env(safe-area-inset-bottom));
+  z-index:200;
+}
+.bnav.show { display:grid; }
+.ni { display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; padding:4px 0; }
+.ni-ic { font-size:22px; }
+.ni-lbl { font-size:10px; font-weight:500; color:var(--text2); }
+.ni.on .ni-lbl { color:var(--accent); }
+
+/* ── EMPTY STATE ── */
+.empty {
+  background:var(--card); border-radius:12px; padding:28px 20px;
+  text-align:center; box-shadow:var(--shadow);
+}
+.empty-ic { font-size:32px; margin-bottom:12px; }
+.empty-title { font-size:15px; font-weight:600; margin-bottom:6px; }
+.empty-sub { font-size:13px; color:var(--text2); margin-bottom:18px; line-height:1.5; }
+
+/* ── TOAST ── */
+.toast {
+  position:fixed; bottom:100px; left:50%; transform:translateX(-50%) translateY(20px);
+  background:#1a3a4a; color:#fff; font-size:13px; font-weight:500;
+  padding:10px 20px; border-radius:24px; opacity:0;
+  transition:all .25s; pointer-events:none; z-index:300; white-space:nowrap;
+}
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- ══ SPLASH ══ -->
+<div id="splash" class="screen active">
+  <div class="logo">
+    <svg width="30" height="30" viewBox="0 0 34 34" fill="none">
+      <circle cx="17" cy="17" r="16" stroke="#2e9b8f" stroke-width="1.5"/>
+      <ellipse cx="17" cy="17" rx="8" ry="16" stroke="#2e9b8f" stroke-width="1.5"/>
+      <line x1="1" y1="17" x2="33" y2="17" stroke="#2e9b8f" stroke-width="1.5"/>
+    </svg>
+    <span class="logo-text">MERIDIAN</span>
+  </div>
+
+  <div class="sphere-wrap">
+    <div class="ring r1"></div>
+    <div class="ring r2"></div>
+    <div class="ring r3"></div>
+    <div class="sphere-core"></div>
+    <div class="sphere-tag tag1">
+      <div class="tag-label">Ферритин</div>
+      <div class="tag-val">↓ ниже нормы</div>
+    </div>
+    <div class="sphere-tag tag2">
+      <div class="tag-label">Витамин D</div>
+      <div class="tag-val">↗ ниже оптимума</div>
+    </div>
+    <div class="sphere-tag tag3">
+      <div class="tag-label">Системная картина</div>
+      <div class="tag-val ok">● дефицит железа</div>
+    </div>
+  </div>
+
+  <h1 class="splash-title">
+    Твоё тело знает<br>правду — <span>узнай её</span>
+  </h1>
+  <p class="splash-quote">
+    «Каждый человек заслуживает знать правду о своём теле — и прожить как можно больше здоровых лет. <em>Meridian делает это возможным.</em>»<br><br>
+    — Команда Meridian
+  </p>
+
+  <button class="btn btn-primary" onclick="goOnboarding()" style="max-width:320px">Начать →</button>
+  <button class="btn btn-ghost" onclick="trySkip()" style="max-width:320px">У меня уже есть профиль</button>
+</div>
+
+<!-- ══ ONBOARDING ══ -->
+<div id="onboarding" class="screen">
+  <div class="ob-step active" id="ob1">
+    <div class="prog-bar"><div class="prog-fill" style="width:25%"></div></div>
+    <div class="step-n">ШАГ 1 ИЗ 4</div>
+    <div class="step-h">Как тебя зовут?</div>
+    <div class="step-s">Чтобы разбор был персональным</div>
+    <div class="step-body">
+      <input class="field" id="f-name" type="text" placeholder="Твоё имя" autocomplete="off">
+    </div>
+    <div class="step-foot">
+      <button class="btn btn-primary" onclick="ob_next(1)">Далее →</button>
+    </div>
+  </div>
+
+  <div class="ob-step" id="ob2">
+    <div class="prog-bar"><div class="prog-fill" style="width:50%"></div></div>
+    <div class="step-n">ШАГ 2 ИЗ 4</div>
+    <div class="step-h">Твой пол</div>
+    <div class="step-s">Нормы анализов различаются у мужчин и женщин</div>
+    <div class="step-body">
+      <div class="grid2">
+        <button class="pick" id="gm" onclick="pickGender('m')">👨<br><br>Мужской</button>
+        <button class="pick" id="gf" onclick="pickGender('f')">👩<br><br>Женский</button>
+      </div>
+    </div>
+    <div class="step-foot">
+      <button class="btn btn-primary" onclick="ob_next(2)">Далее →</button>
+    </div>
+  </div>
+
+  <div class="ob-step" id="ob3">
+    <div class="prog-bar"><div class="prog-fill" style="width:75%"></div></div>
+    <div class="step-n">ШАГ 3 ИЗ 4</div>
+    <div class="step-h">Сколько тебе лет?</div>
+    <div class="step-s">Влияет на оптимальные диапазоны показателей</div>
+    <div class="step-body">
+      <input class="field" id="f-age" type="number" placeholder="Возраст" min="14" max="100">
+    </div>
+    <div class="step-foot">
+      <button class="btn btn-primary" onclick="ob_next(3)">Далее →</button>
+    </div>
+  </div>
+
+  <div class="ob-step" id="ob4">
+    <div class="prog-bar"><div class="prog-fill" style="width:100%"></div></div>
+    <div class="step-n">ШАГ 4 ИЗ 4</div>
+    <div class="step-h">Рост и вес</div>
+    <div class="step-s">Для расчёта ИМТ и контекста показателей</div>
+    <div class="step-body">
+      <input class="field" id="f-height" type="number" placeholder="Рост, см" min="140" max="220">
+      <input class="field" id="f-weight" type="number" placeholder="Вес, кг"  min="40"  max="200">
+    </div>
+    <div class="step-foot">
+      <button class="btn btn-primary" onclick="ob_finish()">Готово →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ HOME ══ -->
+<div id="home" class="screen">
+  <div class="page-top">
+    <div class="top-row">
+      <div class="hdr-logo">
+        <svg width="24" height="24" viewBox="0 0 34 34" fill="none">
+          <circle cx="17" cy="17" r="16" stroke="#2e9b8f" stroke-width="1.5"/>
+          <ellipse cx="17" cy="17" rx="8" ry="16" stroke="#2e9b8f" stroke-width="1.5"/>
+          <line x1="1" y1="17" x2="33" y2="17" stroke="#2e9b8f" stroke-width="1.5"/>
+        </svg>
+        <span class="hdr-logo-txt">MERIDIAN</span>
+      </div>
+    </div>
+
+    <div class="user-card" onclick="go('profile')">
+      <div class="avatar" id="h-av">М</div>
+      <div>
+        <div class="u-name" id="h-name">Загрузка...</div>
+        <div class="u-sub">Моя анкета · профиль здоровья</div>
+      </div>
+      <div class="arr">›</div>
+    </div>
+
+    <div class="sum-card">
+      <div class="sum-top">
+        <span class="sum-title">Сводка здоровья</span>
+        <span class="badge empty" id="h-badge">Нет данных</span>
+      </div>
+      <div class="sum-counts" id="h-counts">Добавь анализы чтобы получить сводку</div>
+      <span class="sum-link" onclick="go('indicators')">Все показатели ›</span>
+      <div class="sum-date" id="h-date"></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-hdr">
+      <span class="sec-title">ПОКАЗАТЕЛИ</span>
+      <span class="sec-link" onclick="go('indicators')">Все →</span>
+    </div>
+    <div id="h-inds"></div>
+  </div>
+
+  <div class="ai-card">
+    <div class="ai-lbl">РАЗБОР MERIDIAN</div>
+    <div class="ai-body" id="h-ai">Добавь результаты анализов — и я дам персональный разбор: что происходит в твоём теле, какие паттерны видны и что делать прямо сейчас.</div>
+    <span class="ai-more" onclick="go('analysis')">Смотреть разбор ›</span>
+  </div>
+
+  <div class="sec">
+    <div class="sec-hdr">
+      <span class="sec-title">ДОКУМЕНТЫ</span>
+      <span class="sec-link" onclick="go('analysis')">Все →</span>
+    </div>
+    <div id="h-docs">
+      <div class="empty">
+        <div class="empty-ic">📄</div>
+        <div class="empty-title">Анализы не добавлены</div>
+        <div class="empty-sub">Введи показатели вручную</div>
+        <button class="btn btn-primary" onclick="go('indicators')" style="max-width:200px;padding:12px;font-size:14px;margin:0 auto">Добавить →</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="share-block" onclick="go('share-screen')">
+    <div class="share-top">
+      <div class="share-ic">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M17 20H7a2 2 0 01-2-2V6a2 2 0 012-2h7l5 5v9a2 2 0 01-2 2z" stroke="#2e9b8f" stroke-width="1.5"/>
+          <path d="M9 12h6M9 16h4" stroke="#2e9b8f" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="share-title">Поделиться с врачом</div>
+        <div class="share-sub">Готовая сводка по твоим данным — покажи врачу на приёме или перешли в пару касаний</div>
+      </div>
+    </div>
+    <button class="share-cta">👨‍⚕️ Поделиться с врачом</button>
+  </div>
+</div>
+
+<!-- ══ INDICATORS ══ -->
+<div id="indicators" class="screen">
+  <div class="scr-hdr">
+    <button class="back-btn" onclick="go('home')">‹ Назад</button>
+    <div class="pg-title">Показатели</div>
+    <div class="pg-sub">Введи результаты своих анализов</div>
+  </div>
+  <div id="ind-form"></div>
+  <div style="padding:14px 20px 24px">
+    <button class="btn btn-primary" onclick="saveInds()">Сохранить анализы</button>
+  </div>
+</div>
+
+<!-- ══ ANALYSIS ══ -->
+<div id="analysis" class="screen">
+  <div class="ana-hero">
+    <button class="back-btn" onclick="go('home')" style="margin-bottom:10px">‹ Назад</button>
+    <div class="ana-title">Разбор Meridian</div>
+    <div class="ana-sub" id="ana-date">Персональный анализ твоих показателей</div>
+  </div>
+  <div id="ana-body" style="padding:14px 0"></div>
+</div>
+
+<!-- ══ SHARE SCREEN ══ -->
+<div id="share-screen" class="screen">
+  <div class="scr-hdr">
+    <button class="back-btn" onclick="go('home')">‹ Назад</button>
+    <div class="pg-title">Поделиться с врачом</div>
+    <div class="pg-sub">Готовая сводка — скопируй или перешли</div>
+  </div>
+  <div class="share-doc" id="share-doc">Добавь анализы чтобы сформировать сводку</div>
+  <div class="share-btns">
+    <button class="s-copy" onclick="copyDoc()">📋 Скопировать</button>
+    <button class="s-share" onclick="shareDoc()">↗ Поделиться</button>
+  </div>
+  <div class="share-note">Данные носят справочный характер и не заменяют консультацию врача. Подготовлено в Meridian — превентивная медицина.</div>
+</div>
+
+<!-- ══ PROFILE ══ -->
+<div id="profile" class="screen">
+  <div class="scr-hdr">
+    <button class="back-btn" onclick="go('home')">‹ Назад</button>
+  </div>
+  <div class="prof-top-card">
+    <div class="av-lg" id="p-av">М</div>
+    <div class="pn-lg" id="p-name">...</div>
+    <div class="ps-lg" id="p-sub">Профиль здоровья</div>
+  </div>
+
+  <div class="set-sec">
+    <div class="sec-hdr" style="padding:0;margin-bottom:12px">
+      <span class="sec-title">МОЙ ПРОФИЛЬ</span>
+      <span class="sec-link" onclick="editProfile()">Изменить</span>
+    </div>
+    <div class="ana-card" style="margin:0 0 14px">
+      <div id="p-data" class="prof-data"></div>
+    </div>
+    <div class="set-item" onclick="go('indicators')">
+      <div class="set-left">
+        <div class="set-ic">🩸</div>
+        <div>
+          <div class="set-title">Мои анализы</div>
+          <div class="set-sub">Ввести или обновить показатели</div>
+        </div>
+      </div>
+      <div>›</div>
+    </div>
+    <div class="set-item" onclick="go('analysis')">
+      <div class="set-left">
+        <div class="set-ic">🔬</div>
+        <div>
+          <div class="set-title">Разбор Meridian</div>
+          <div class="set-sub">Персональный анализ показателей</div>
+        </div>
+      </div>
+      <div>›</div>
+    </div>
+    <div class="set-item" onclick="go('share-screen')">
+      <div class="set-left">
+        <div class="set-ic">👨‍⚕️</div>
+        <div>
+          <div class="set-title">Поделиться с врачом</div>
+          <div class="set-sub">Сформировать готовую сводку</div>
+        </div>
+      </div>
+      <div>›</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ BOTTOM NAV ══ -->
+<nav class="bnav" id="bnav">
+  <div class="ni on" id="ni-home" onclick="go('home')">
+    <span class="ni-ic">🏠</span>
+    <span class="ni-lbl">Главная</span>
+  </div>
+  <div class="ni" id="ni-ind" onclick="go('indicators')">
+    <span class="ni-ic">🩸</span>
+    <span class="ni-lbl">Анализы</span>
+  </div>
+  <div class="ni" id="ni-prof" onclick="go('profile')">
+    <span class="ni-ic">👤</span>
+    <span class="ni-lbl">Профиль</span>
+  </div>
+</nav>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── DATA ──
+let S = { profile: null, inds: {}, updatedAt: null };
+
+const INDS = [
+  { k:'hemoglobin',   n:'Гемоглобин',          u:'г/дл',      g:'Кровь',       ref:{m:[13.2,17.5],f:[11.7,15.5]}, opt:{m:[14,17],f:[12.5,15]} },
+  { k:'hematocrit',   n:'Гематокрит',           u:'%',         g:'Кровь',       ref:{m:[38.3,48.6],f:[35.5,44.9]} },
+  { k:'platelets',    n:'Тромбоциты',            u:'×10⁹/л',   g:'Кровь',       ref:{m:[150,400],f:[150,400]} },
+  { k:'esr',          n:'СОЭ',                  u:'мм/ч',      g:'Кровь',       ref:{m:[0,15],f:[0,20]} },
+  { k:'glucose',      n:'Глюкоза',              u:'ммоль/л',   g:'Метаболизм',  ref:{m:[3.9,5.5],f:[3.9,5.5]}, opt:{m:[3.9,5.0],f:[3.9,5.0]} },
+  { k:'cholesterol',  n:'Холестерин общий',      u:'ммоль/л',   g:'Метаболизм',  ref:{m:[0,5.2],f:[0,5.2]} },
+  { k:'insulin',      n:'Инсулин',              u:'мкМЕ/мл',   g:'Метаболизм',  ref:{m:[2.6,24.9],f:[2.6,24.9]} },
+  { k:'uric_acid',    n:'Мочевая кислота',       u:'мкмоль/л',  g:'Метаболизм',  ref:{m:[200,430],f:[140,360]} },
+  { k:'ferritin',     n:'Ферритин',             u:'мкг/л',     g:'Микроэлементы',ref:{m:[22,322],f:[10,120]}, opt:{m:[70,150],f:[40,100]} },
+  { k:'vitamin_d',    n:'Витамин D (25-OH)',     u:'нг/мл',     g:'Витамины',    ref:{m:[30,100],f:[30,100]}, opt:{m:[40,80],f:[40,80]} },
+  { k:'b12',          n:'Витамин B12',           u:'пг/мл',     g:'Витамины',    ref:{m:[200,900],f:[200,900]} },
+  { k:'tsh',          n:'ТТГ',                  u:'мкМЕ/мл',   g:'Щитовидная',  ref:{m:[0.4,4.0],f:[0.4,4.0]}, opt:{m:[0.5,2.5],f:[0.5,2.5]} },
+  { k:'t4_free',      n:'Т4 свободный',          u:'пмоль/л',   g:'Щитовидная',  ref:{m:[9,19],f:[9,19]} },
+  { k:'crp',          n:'СРБ',                  u:'мг/л',      g:'Воспаление',  ref:{m:[0,5],f:[0,5]} },
+  { k:'alt',          n:'АЛТ',                  u:'Ед/л',      g:'Печень',      ref:{m:[0,41],f:[0,31]} },
+  { k:'ast',          n:'АСТ',                  u:'Ед/л',      g:'Печень',      ref:{m:[0,40],f:[0,32]} },
+  { k:'cortisol',     n:'Кортизол',             u:'нмоль/л',   g:'Гормоны',     ref:{m:[138,690],f:[138,690]} },
+  { k:'testosterone', n:'Тестостерон',           u:'нмоль/л',   g:'Гормоны',     ref:{m:[8,28],f:[0.3,2.8]} },
+];
+
+const GROUPS = [...new Set(INDS.map(i=>i.g))];
+
+function status(ind, val, sex) {
+  if (!val || isNaN(val)) return 'none';
+  const r = ind.ref[sex];
+  if (!r) return 'none';
+  if (val < r[0] || val > r[1]) return 'bad';
+  if (ind.opt) {
+    const o = ind.opt[sex];
+    if (o && (val < o[0] || val > o[1])) return 'warn';
+  }
+  return 'ok';
+}
+
+// ── INIT ──
+document.addEventListener('DOMContentLoaded', () => {
+  if (window.Telegram?.WebApp) { Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
+  const raw = localStorage.getItem('mrd');
+  if (raw) { try { S = JSON.parse(raw); } catch(e){} }
+  if (S.profile) go('home');
+  buildForm();
+});
+
+function save() { localStorage.setItem('mrd', JSON.stringify(S)); }
+
+// ── NAVIGATION ──
+function go(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const navScreens = ['home','indicators','profile'];
+  document.getElementById('bnav').classList.toggle('show', navScreens.includes(id));
+  document.querySelectorAll('.ni').forEach(n => n.classList.remove('on'));
+  if (id==='home')       document.getElementById('ni-home').classList.add('on');
+  if (id==='indicators') document.getElementById('ni-ind').classList.add('on');
+  if (id==='profile')    document.getElementById('ni-prof').classList.add('on');
+  if (id==='home')        refreshHome();
+  if (id==='analysis')    refreshAna();
+  if (id==='share-screen')refreshShare();
+  if (id==='profile')     refreshProfile();
+  if (id==='indicators')  buildForm();
+  window.scrollTo(0,0);
+}
+
+// ── ONBOARDING ──
+let selGender = null;
+
+function goOnboarding() {
+  go('onboarding');
+  document.querySelectorAll('.ob-step').forEach(s=>s.classList.remove('active'));
+  document.getElementById('ob1').classList.add('active');
+}
+
+function trySkip() { S.profile ? go('home') : goOnboarding(); }
+
+function pickGender(g) {
+  selGender = g;
+  document.getElementById('gm').classList.toggle('on', g==='m');
+  document.getElementById('gf').classList.toggle('on', g==='f');
+}
+
+function ob_next(step) {
+  if (step===1) {
+    if (!document.getElementById('f-name').value.trim()) { showToast('Введи своё имя'); return; }
+    document.getElementById('ob1').classList.remove('active');
+    document.getElementById('ob2').classList.add('active');
+  } else if (step===2) {
+    if (!selGender) { showToast('Выбери пол'); return; }
+    document.getElementById('ob2').classList.remove('active');
+    document.getElementById('ob3').classList.add('active');
+  } else if (step===3) {
+    const a = parseInt(document.getElementById('f-age').value);
+    if (!a || a<14||a>100) { showToast('Введи корректный возраст'); return; }
+    document.getElementById('ob3').classList.remove('active');
+    document.getElementById('ob4').classList.add('active');
+  }
+}
+
+function ob_finish() {
+  S.profile = {
+    name:   document.getElementById('f-name').value.trim(),
+    gender: selGender,
+    age:    parseInt(document.getElementById('f-age').value),
+    height: parseInt(document.getElementById('f-height').value) || null,
+    weight: parseInt(document.getElementById('f-weight').value) || null,
+  };
+  save();
+  go('home');
+}
+
+function editProfile() {
+  const p = S.profile;
+  document.getElementById('f-name').value   = p.name  || '';
+  document.getElementById('f-age').value    = p.age   || '';
+  document.getElementById('f-height').value = p.height|| '';
+  document.getElementById('f-weight').value = p.weight|| '';
+  selGender = p.gender;
+  goOnboarding();
+}
+
+// ── HOME ──
+function refreshHome() {
+  const p = S.profile; if (!p) return;
+  document.getElementById('h-av').textContent   = (p.name||'?')[0].toUpperCase();
+  document.getElementById('h-name').textContent = p.name;
+
+  const filled = INDS.filter(i=>S.inds[i.k]);
+  const sts    = filled.map(i=>status(i,parseFloat(S.inds[i.k]),p.gender));
+  const bad    = sts.filter(s=>s==='bad').length;
+  const warn   = sts.filter(s=>s==='warn').length;
+  const ok     = sts.filter(s=>s==='ok').length;
+
+  if (!filled.length) {
+    document.getElementById('h-counts').textContent = 'Добавь анализы чтобы получить сводку';
+    document.getElementById('h-badge').textContent  = 'Нет данных';
+    document.getElementById('h-badge').className    = 'badge empty';
+  } else {
+    document.getElementById('h-counts').innerHTML =
+      `${ok} в норме, <strong>${bad+warn} требуют внимания</strong>, ${INDS.length-filled.length} без оценки`;
+    if (bad+warn===0) {
+      document.getElementById('h-badge').textContent = 'Всё в норме';
+      document.getElementById('h-badge').className   = 'badge good';
+    } else {
+      document.getElementById('h-badge').textContent = 'Есть зоны внимания';
+      document.getElementById('h-badge').className   = 'badge';
+    }
+  }
+
+  if (S.updatedAt) {
+    document.getElementById('h-date').textContent =
+      'Обновлено · '+new Date(S.updatedAt).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});
+  }
+
+  // preview indicators
+  const prev = INDS.filter(i=>S.inds[i.k]).slice(0,4);
+  const el   = document.getElementById('h-inds');
+  if (!prev.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-ic">🩸</div><div class="empty-title">Анализы не добавлены</div><div class="empty-sub">Введи показатели вручную — займёт 2 минуты</div><button class="btn btn-primary" onclick="go('indicators')" style="max-width:200px;padding:12px;font-size:14px;margin:0 auto">Добавить анализы</button></div>`;
+  } else {
+    el.innerHTML = prev.map(ind=>{
+      const v = parseFloat(S.inds[ind.k]);
+      const s = status(ind,v,p.gender);
+      return `<div class="ind-row" onclick="go('indicators')">
+        <div class="dot ${s}"></div>
+        <div class="ind-name">${ind.n}</div>
+        <span class="ind-val">${v}</span><span class="ind-u">${ind.u}</span>
+        <div class="arr-sm">›</div>
+      </div>`;
+    }).join('');
+  }
+
+  // AI text
+  document.getElementById('h-ai').textContent = aiText();
+
+  // docs
+  if (filled.length) {
+    const d = S.updatedAt ? new Date(S.updatedAt).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'}) : '—';
+    document.getElementById('h-docs').innerHTML = `
+      <div class="doc-row" onclick="go('analysis')">
+        <div class="doc-ic">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z" stroke="#2e9b8f" stroke-width="1.5"/>
+            <path d="M14 2v6h6M9 13h6M9 17h4" stroke="#2e9b8f" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div style="flex:1"><div style="font-size:14px;font-weight:600">Анализ от ${d}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:2px">${filled.length} показателей</div></div>
+        <div>›</div>
+      </div>`;
+  }
+}
+
+// ── INDICATORS FORM ──
+function buildForm() {
+  const p = S.profile;
+  const sex = p?.gender||'m';
+  document.getElementById('ind-form').innerHTML = GROUPS.map(grp=>{
+    const gi = INDS.filter(i=>i.g===grp);
+    return `<div class="ind-g">
+      <div class="ind-g-title">${grp.toUpperCase()}</div>
+      ${gi.map(ind=>{
+        const r = ind.ref[sex];
+        const v = S.inds[ind.k]||'';
+        const sc = v ? 's-'+status(ind,parseFloat(v),sex) : '';
+        return `<div class="ind-inp-row">
+          <div class="ind-inp-info">
+            <div class="ind-inp-name">${ind.n}</div>
+            <div class="ind-inp-ref">Норма: ${r[0]}–${r[1]}</div>
+          </div>
+          <input class="ind-inp ${sc}" id="ii-${ind.k}" type="number" step="0.01"
+            placeholder="—" value="${v}" oninput="liveColor('${ind.k}')">
+          <div class="ind-inp-unit">${ind.u}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+
+function liveColor(k) {
+  const el  = document.getElementById(`ii-${k}`);
+  const ind = INDS.find(i=>i.k===k);
+  const sex = S.profile?.gender||'m';
+  const s   = status(ind,parseFloat(el.value),sex);
+  el.className = 'ind-inp' + (el.value ? ' s-'+s : '');
+}
+
+function saveInds() {
+  INDS.forEach(ind=>{
+    const v = document.getElementById(`ii-${ind.k}`)?.value;
+    if (v) S.inds[ind.k]=v; else delete S.inds[ind.k];
+  });
+  S.updatedAt = new Date().toISOString();
+  save();
+  if (window.Telegram?.WebApp?.HapticFeedback)
+    Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+  showToast('Анализы сохранены ✓');
+  setTimeout(()=>go('home'),800);
+}
+
+// ── AI TEXT ──
+function aiText() {
+  const sex  = S.profile?.gender||'m';
+  const bad  = [], warn_=[];
+  INDS.forEach(ind=>{
+    const v = parseFloat(S.inds[ind.k]); if(!v) return;
+    const s = status(ind,v,sex);
+    if(s==='bad')  bad.push(ind.n);
+    if(s==='warn') warn_.push(ind.n);
+  });
+  if (!bad.length && !warn_.length)
+    return 'Добавь результаты анализов — и я дам персональный разбор: что происходит в твоём теле и что делать прямо сейчас.';
+  if (!bad.length && !warn_.length)
+    return 'Твои показатели выглядят хорошо. Продолжай следить за динамикой каждые 3 месяца.';
+  const all = [...bad,...warn_].slice(0,3).join(', ');
+  return `Есть зоны внимания: ${all}. Это функциональные нарушения — именно такие паттерны появляются до болезни. Открой полный разбор.`;
+}
+
+// ── ANALYSIS ──
+function refreshAna() {
+  const p = S.profile; if(!p) return;
+  const sex = p.gender||'m';
+  if (S.updatedAt)
+    document.getElementById('ana-date').textContent =
+      new Date(S.updatedAt).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});
+
+  const filled = INDS.filter(i=>S.inds[i.k]);
+  if (!filled.length) {
+    document.getElementById('ana-body').innerHTML =
+      `<div class="ana-card" style="margin:0 20px;text-align:center;padding:32px">
+        <div style="font-size:36px;margin-bottom:14px">🔬</div>
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px">Нет данных для анализа</div>
+        <div style="font-size:13px;color:var(--text2);margin-bottom:18px">Добавь результаты анализов</div>
+        <button class="btn btn-primary" onclick="go('indicators')" style="max-width:220px">Добавить анализы</button>
+      </div>`;
+    return;
+  }
+
+  const bad_  = filled.filter(i=>status(i,parseFloat(S.inds[i.k]),sex)==='bad');
+  const warn_ = filled.filter(i=>status(i,parseFloat(S.inds[i.k]),sex)==='warn');
+  const ok_   = filled.filter(i=>status(i,parseFloat(S.inds[i.k]),sex)==='ok');
+  const risks = mkRisks(bad_,warn_,sex);
+  const proto = mkProto(bad_,warn_,sex);
+
+  let html = '';
+
+  if (bad_.length+warn_.length>0) html += `
+    <div class="ana-card">
+      <div class="ana-card-title">⚠ ПОКАЗАТЕЛИ ВНЕ НОРМЫ</div>
+      ${[...bad_,...warn_].map(ind=>{
+        const v = parseFloat(S.inds[ind.k]);
+        const r = ind.ref[sex];
+        const s = status(ind,v,sex);
+        const dir = v<r[0] ? '↓ ниже нормы' : '↑ выше нормы';
+        return `<div class="risk-row">
+          <span class="rbadge ${s==='bad'?'rb-hi':'rb-md'}">${s==='bad'?'вне нормы':'вне оптимума'}</span>
+          <div class="risk-txt"><b>${ind.n}:</b> ${v} ${ind.u} — ${dir}<br><span style="color:var(--text2);font-size:12px">норма ${r[0]}–${r[1]}</span></div>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  if (ok_.length) html += `
+    <div class="ana-card">
+      <div class="ana-card-title">✓ В НОРМЕ</div>
+      <div class="ana-card-body" style="color:var(--text2)">${ok_.map(i=>i.n).join(' · ')}</div>
+    </div>`;
+
+  if (risks.length) html += `
+    <div class="ana-card">
+      <div class="ana-card-title">🔮 ВОЗМОЖНЫЕ РИСКИ</div>
+      ${risks.map(r=>`<div class="risk-row">
+        <span class="rbadge ${r.lvl==='hi'?'rb-hi':r.lvl==='md'?'rb-md':'rb-lo'}">${r.lvl==='hi'?'высокий':r.lvl==='md'?'средний':'низкий'}</span>
+        <div class="risk-txt">${r.txt}</div>
+      </div>`).join('')}
+    </div>`;
+
+  if (proto.length) html += `
+    <div class="ana-card">
+      <div class="ana-card-title">📋 ЧТО ДЕЛАТЬ ПРЯМО СЕЙЧАС</div>
+      ${proto.map((t,i)=>`<div class="prot-row">
+        <div class="prot-num">${i+1}</div>
+        <div class="prot-txt">${t}</div>
+      </div>`).join('')}
+    </div>`;
+
+  html += `<div style="padding:8px 20px 20px;font-size:11px;color:var(--text2);text-align:center;line-height:1.6">
+    Разбор носит информационный характер. Не заменяет консультацию врача.<br>Подготовлено Meridian на основе доказательной медицины.
+  </div>`;
+
+  document.getElementById('ana-body').innerHTML = html;
+}
+
+function mkRisks(bad,warn,sex) {
+  const r=[], ks=[...bad,...warn].map(i=>i.k);
+  if(ks.includes('ferritin')||ks.includes('hemoglobin'))
+    r.push({lvl:'hi',txt:'Риск железодефицитной анемии — влияет на энергию, концентрацию и иммунитет'});
+  if(ks.includes('vitamin_d'))
+    r.push({lvl:'md',txt:'Дефицит витамина D снижает иммунитет и повышает риск воспалений'});
+  if(ks.includes('glucose')||ks.includes('insulin'))
+    r.push({lvl:'hi',txt:'Нарушение углеводного обмена — риск инсулинорезистентности и диабета 2 типа'});
+  if(ks.includes('tsh')||ks.includes('t4_free'))
+    r.push({lvl:'md',txt:'Дисфункция щитовидной железы влияет на обмен веществ, энергию и вес'});
+  if(ks.includes('crp'))
+    r.push({lvl:'md',txt:'Хроническое воспаление — ключевой фактор риска сердечно-сосудистых заболеваний'});
+  if(ks.includes('cholesterol'))
+    r.push({lvl:'md',txt:'Повышенный холестерин увеличивает риск атеросклероза'});
+  return r.slice(0,4);
+}
+
+function mkProto(bad,warn,sex) {
+  const p=[], ks=[...bad,...warn].map(i=>i.k);
+  if(ks.includes('ferritin')) p.push('Сдай расширённую панель на железо: ферритин + сывороточное железо + ОЖСС');
+  if(ks.includes('vitamin_d')) p.push('Начни приём витамина D3 2000–4000 МЕ/день с жирной едой');
+  if(ks.includes('hemoglobin')) p.push('Увеличь потребление красного мяса, бобовых, тёмной зелени');
+  if(ks.includes('glucose')) p.push('Снизь рафинированные углеводы, добавь 30 мин ходьбы ежедневно');
+  if(ks.includes('tsh')) p.push('Консультация эндокринолога — расширённая панель щитовидной (ТТГ, Т3, Т4, АТ-ТПО)');
+  if(ks.includes('crp')) p.push('Противовоспалительный протокол: омега-3, куркумин, снижение стресса');
+  if(ks.includes('cholesterol')) p.push('Ограничь насыщенные жиры, добавь клетчатку и омега-3');
+  if(ks.includes('b12')) p.push('Витамин B12 (метилкобаламин) 1000 мкг/день под язык');
+  if(p.length>0) p.push('Повтори анализы через 3 месяца — отследи динамику в Meridian');
+  return p.slice(0,6);
+}
+
+// ── SHARE ──
+function refreshShare() {
+  const p=S.profile; if(!p) return;
+  const sex=p.gender||'m';
+  const filled=INDS.filter(i=>S.inds[i.k]);
+  if(!filled.length){ document.getElementById('share-doc').textContent='Добавь анализы чтобы сформировать сводку'; return; }
+  const bmi = p.height&&p.weight ? (p.weight/((p.height/100)**2)).toFixed(1) : '—';
+  const bad_=filled.filter(i=>status(i,parseFloat(S.inds[i.k]),sex)==='bad');
+  const ok_ =filled.filter(i=>status(i,parseFloat(S.inds[i.k]),sex)==='ok');
+  const dt  =S.updatedAt?new Date(S.updatedAt).toLocaleDateString('ru-RU'):'—';
+  document.getElementById('share-doc').textContent =
+`Сводка здоровья для врача
+Дата: ${dt} · Meridian
+
+Пациент: ${p.name}
+Пол: ${p.gender==='m'?'Мужской':'Женский'}; Возраст: ${p.age}
+Рост: ${p.height||'—'} см; Вес: ${p.weight||'—'} кг; ИМТ: ${bmi}
+
+${bad_.length?`Показатели вне нормы:\n${bad_.map(ind=>{
+  const v=parseFloat(S.inds[ind.k]);
+  const r=ind.ref[sex];
+  const d=v<r[0]?'ниже нормы':'выше нормы';
+  return `- ${ind.n}: ${v} ${ind.u} — ${d} (норма ${r[0]}–${r[1]})`;
+}).join('\n')}\n\n`:''}${ok_.length?`В норме: ${ok_.map(i=>i.n).join(', ')}\n\n`:''}Без оценки: ${INDS.length-filled.length} показателей
+
+Данные носят справочный характер.
+Подготовлено в Meridian — превентивная медицина.`;
+}
+
+function copyDoc() {
+  navigator.clipboard.writeText(document.getElementById('share-doc').textContent).then(()=>{
+    if(window.Telegram?.WebApp?.HapticFeedback) Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+    const b=event.target; b.textContent='✓ Скопировано';
+    setTimeout(()=>b.textContent='📋 Скопировать',2000);
+  });
+}
+
+function shareDoc() {
+  const txt=document.getElementById('share-doc').textContent;
+  if(window.Telegram?.WebApp) Telegram.WebApp.switchInlineQuery(txt.slice(0,200));
+}
+
+// ── PROFILE ──
+function refreshProfile() {
+  const p=S.profile; if(!p) return;
+  const bmi=p.height&&p.weight?(p.weight/((p.height/100)**2)).toFixed(1):null;
+  const bmiL=bmi?(bmi<18.5?'ниже нормы':bmi<25?'норма':bmi<30?'избыток':'ожирение'):null;
+  document.getElementById('p-av').textContent   = (p.name||'?')[0].toUpperCase();
+  document.getElementById('p-name').textContent = p.name;
+  document.getElementById('p-sub').textContent  = `${p.age} лет · ${p.gender==='m'?'Мужской':'Женский'}`;
+  document.getElementById('p-data').innerHTML   = [
+    ['Пол',     p.gender==='m'?'Мужской':'Женский'],
+    ['Возраст', p.age+' лет'],
+    ['Рост',    p.height?p.height+' см':'—'],
+    ['Вес',     p.weight?p.weight+' кг':'—'],
+    bmi?['ИМТ', `${bmi} · ${bmiL}`]:null,
+  ].filter(Boolean).map(([l,v])=>`
+    <div class="prof-cell">
+      <div class="prof-cell-l">${l}</div>
+      <div class="prof-cell-v">${v}</div>
+    </div>`).join('');
+}
+
+// ── TOAST ──
+function showToast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2200);
+}
+</script>
+</body>
+</html>
