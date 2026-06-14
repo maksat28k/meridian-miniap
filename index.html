@@ -1816,10 +1816,23 @@ function openChat() {
   }
 }
 
+function mdToHtml(text) {
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/\*\*(.+?)\*\*/g,'<b>$1</b>')
+    .replace(/\*(.+?)\*/g,'<i>$1</i>')
+    .replace(/`(.+?)`/g,'<code style="background:rgba(0,0,0,.1);padding:1px 4px;border-radius:3px">$1</code>')
+    .replace(/\n/g,'<br>');
+}
+
 function addBubble(role, text) {
   const el = document.createElement('div');
   el.className = 'chat-bubble ' + (role === 'ai' ? 'bubble-ai' : 'bubble-user');
-  el.textContent = text;
+  if (role === 'ai') {
+    el.innerHTML = mdToHtml(text);
+  } else {
+    el.textContent = text;
+  }
   document.getElementById('chat-messages').appendChild(el);
   el.scrollIntoView({behavior:'smooth', block:'end'});
   return el;
