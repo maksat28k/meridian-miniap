@@ -993,7 +993,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Если ID изменился (старый неверный localStorage) — чистим локальный профиль
     if (idChanged) {
-      S = { telegramId: realId };
+      S = { telegramId: realId, inds: {}, profile: null, updatedAt: null };
     } else {
       S.telegramId = realId;
     }
