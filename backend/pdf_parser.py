@@ -90,6 +90,20 @@ def extract_number(text: str) -> Optional[float]:
     m = re.search(r'(\d+\.?\d*)', text)
     return float(m.group(1)) if m else None
 
+def extract_text_pymupdf(file_path: str) -> str:
+    """Резервное извлечение текста через pymupdf — лучше справляется со сложными PDF."""
+    try:
+        import fitz
+        doc = fitz.open(file_path)
+        text = ""
+        for page in doc:
+            text += page.get_text() + "\n"
+        doc.close()
+        return text
+    except Exception as e:
+        print(f"pymupdf error: {e}")
+        return ""
+
 def parse_pdf(file_path: str) -> dict:
     """Парсит PDF и возвращает словарь найденных показателей."""
     results = {}
@@ -98,7 +112,7 @@ def parse_pdf(file_path: str) -> dict:
     try:
         with pdfplumber.open(file_path) as pdf:
             for page in pdf.pages:
-                text = page.extract_text() or ""
+                text = page.extract_text(x_tolerance=3, y_tolerance=3) or ""
                 raw_text += text + "\n"
 
                 # Пробуем таблицы
@@ -114,7 +128,6 @@ def parse_pdf(file_path: str) -> dict:
                                 continue
                             for alias in aliases:
                                 if alias in row_text:
-                                    # Ищем число в ячейках строки
                                     for cell in row:
                                         if cell:
                                             val = extract_number(str(cell))
@@ -123,24 +136,31 @@ def parse_pdf(file_path: str) -> dict:
                                                 break
                                     break
 
-        # Построчный поиск в тексте
-        lines = raw_text.lower().split('\n')
-        for line in lines:
-            for key, aliases in MARKER_ALIASES.items():
-                if key in results:
-                    continue
-                for alias in aliases:
-                    if alias in line:
-                        val = extract_number(line)
-                        if val and val > 0:
-                            results[key] = val
-                        break
-
     except Exception as e:
-        print(f"PDF parse error: {e}")
+        print(f"pdfplumber error: {e}")
+
+    # Если pdfplumber не извлёк текст — пробуем pymupdf
+    if len(raw_text.strip()) < 50:
+        print("pdfplumber got no text, trying pymupdf...")
+        raw_text = extract_text_pymupdf(file_path)
+
+    # Построчный поиск в тексте
+    lines = raw_text.lower().split('\n')
+    for line in lines:
+        for key, aliases in MARKER_ALIASES.items():
+            if key in results:
+                continue
+            for alias in aliases:
+                if alias in line:
+                    val = extract_number(line)
+                    if val and val > 0:
+                        results[key] = val
+                    break
+
+    print(f"PDF parsed: {len(results)} indicators, text length: {len(raw_text)}")
 
     return {
         'indicators': results,
-        'raw_text': raw_text[:3000],  # первые 3000 символов для AI
+        'raw_text': raw_text[:8000],  # увеличено с 3000 до 8000 символов
         'found_count': len(results)
     }

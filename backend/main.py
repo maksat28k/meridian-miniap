@@ -369,7 +369,7 @@ def ai_parse_pdf(raw_text: str) -> dict:
 - Верни ТОЛЬКО валидный JSON: {{"ключ": число, ...}}
 
 Текст анализов:
-{raw_text[:4000]}"""
+{raw_text[:8000]}"""
 
     client = get_client()
     resp = client.models.generate_content(model='models/gemini-2.5-flash', contents=prompt)
