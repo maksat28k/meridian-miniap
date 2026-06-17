@@ -1,6 +1,7 @@
 import pdfplumber
 import re
 from typing import Optional
+from datetime import datetime
 
 # Словарь показателей для поиска в PDF
 MARKER_ALIASES = {
@@ -84,6 +85,45 @@ MARKER_ALIASES = {
     'omega3_index':  ['омега-3 индекс', 'omega-3 index', 'индекс омега'],
 }
 
+def extract_analysis_date(text: str) -> Optional[str]:
+    """Извлекает дату обследования из текста PDF."""
+    # Паттерны дат в русских лабораторных PDF
+    patterns = [
+        # "Дата забора: 15.03.2024" / "Дата взятия: 15.03.2024"
+        r'(?:дата\s+(?:забора|взятия|обследования|сдачи|исследования|приёма|приема|материала)[:\s]+)(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})',
+        # "15.03.2024" рядом со словами дата/сдан/взят
+        r'(?:сдан|взят|принят|выполнен)[а-я]*[:\s]+(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})',
+        # Явные метки даты в начале строки
+        r'(?:^|\n)\s*(?:дата)[:\s]+(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})',
+        # Инвитро/Гемотест: "01.03.2024" в верхней части (первые 500 символов)
+        r'(\d{1,2}\.\d{2}\.\d{4})',
+    ]
+    text_lower = text.lower()
+    for pattern in patterns[:-1]:
+        m = re.search(pattern, text_lower)
+        if m:
+            raw = m.group(1)
+            return _normalize_date(raw)
+    # Последний паттерн — берём первую дату из верхней части документа
+    m = re.search(patterns[-1], text[:800])
+    if m:
+        return _normalize_date(m.group(1))
+    return None
+
+def _normalize_date(raw: str) -> str:
+    """Приводит дату к формату YYYY-MM-DD."""
+    raw = raw.replace('/', '.').replace('-', '.')
+    parts = raw.split('.')
+    if len(parts) == 3:
+        d, mo, y = parts
+        if len(y) == 2:
+            y = '20' + y
+        try:
+            return datetime(int(y), int(mo), int(d)).strftime('%Y-%m-%d')
+        except Exception:
+            pass
+    return raw
+
 def extract_number(text: str) -> Optional[float]:
     """Извлекает первое число из строки."""
     text = text.replace(',', '.').replace(' ', '')
@@ -157,10 +197,12 @@ def parse_pdf(file_path: str) -> dict:
                         results[key] = val
                     break
 
-    print(f"PDF parsed: {len(results)} indicators, text length: {len(raw_text)}")
+    analysis_date = extract_analysis_date(raw_text)
+    print(f"PDF parsed: {len(results)} indicators, date: {analysis_date}, text length: {len(raw_text)}")
 
     return {
         'indicators': results,
-        'raw_text': raw_text[:8000],  # увеличено с 3000 до 8000 символов
-        'found_count': len(results)
+        'raw_text': raw_text[:8000],
+        'found_count': len(results),
+        'analysis_date': analysis_date,  # дата обследования из документа
     }

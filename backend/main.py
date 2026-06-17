@@ -51,6 +51,7 @@ def init_db():
             pdf_path TEXT,
             indicators TEXT,
             ai_result TEXT,
+            analysis_date TEXT,
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
@@ -59,6 +60,15 @@ def init_db():
     db.close()
 
 init_db()
+
+# Миграция: добавляем analysis_date если колонки нет
+try:
+    _mdb = get_db()
+    _mdb.execute("ALTER TABLE analyses ADD COLUMN analysis_date TEXT")
+    _mdb.commit()
+    _mdb.close()
+except Exception:
+    pass  # колонка уже существует
 
 async def notify_admin(text: str):
     if not BOT_TOKEN or not ADMIN_ID:
@@ -294,8 +304,9 @@ async def analyze_pdf(
         loop.run_in_executor(executor, get_history_summary, telegram_id),
     )
 
-    indicators = parsed['indicators']
-    raw_text   = parsed['raw_text']
+    indicators    = parsed['indicators']
+    raw_text      = parsed['raw_text']
+    analysis_date = parsed.get('analysis_date')  # дата из документа
 
     # Если keyword-матчинг нашёл мало — пробуем AI-парсинг
     if len(indicators) < 3 and raw_text:
@@ -322,8 +333,8 @@ async def analyze_pdf(
     user = get_or_create_user(telegram_id, name)
     db = get_db()
     db.execute(
-        "INSERT INTO analyses (user_id, pdf_path, indicators, ai_result) VALUES (?,?,?,?)",
-        (user['id'], filename, json.dumps(indicators), json.dumps(ai_result))
+        "INSERT INTO analyses (user_id, pdf_path, indicators, ai_result, analysis_date) VALUES (?,?,?,?,?)",
+        (user['id'], filename, json.dumps(indicators), json.dumps(ai_result), analysis_date)
     )
     db.commit()
     analysis_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -332,6 +343,7 @@ async def analyze_pdf(
     return {
         "success": True,
         "analysis_id": analysis_id,
+        "analysis_date": analysis_date,
         "found": len(indicators),
         "indicators": ai_result.get("indicators", []),
         "summary": ai_result.get("summary", ""),
@@ -388,6 +400,7 @@ async def analyze_manual(
     gender: str = Form(...),
     age: int = Form(...),
     indicators: str = Form(...),  # JSON-строка
+    analysis_date: str = Form(""),  # дата обследования от пользователя
 ):
     """Анализ вручную введённых показателей."""
     try:
@@ -410,8 +423,8 @@ async def analyze_manual(
     user = get_or_create_user(telegram_id, name)
     db = get_db()
     db.execute(
-        "INSERT INTO analyses (user_id, pdf_path, indicators, ai_result) VALUES (?,?,?,?)",
-        (user['id'], 'manual', json.dumps(inds), json.dumps(ai_result))
+        "INSERT INTO analyses (user_id, pdf_path, indicators, ai_result, analysis_date) VALUES (?,?,?,?,?)",
+        (user['id'], 'manual', json.dumps(inds), json.dumps(ai_result), analysis_date or None)
     )
     db.commit()
     analysis_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -420,6 +433,7 @@ async def analyze_manual(
     return {
         "success": True,
         "analysis_id": analysis_id,
+        "analysis_date": analysis_date or None,
         "found": len(inds),
         "indicators": ai_result.get("indicators", []),
         "summary": ai_result.get("summary", ""),
@@ -440,7 +454,7 @@ def get_analyses(telegram_id: str):
     if not user:
         return []
     analyses = db.execute(
-        "SELECT id, created_at, indicators, ai_result FROM analyses WHERE user_id=? ORDER BY created_at DESC",
+        "SELECT id, created_at, analysis_date, indicators, ai_result FROM analyses WHERE user_id=? ORDER BY created_at DESC",
         (user['id'],)
     ).fetchall()
     db.close()
@@ -450,7 +464,8 @@ def get_analyses(telegram_id: str):
         ai   = json.loads(a['ai_result'])
         result.append({
             'id': a['id'],
-            'date': a['created_at'],
+            'date': a['analysis_date'] or a['created_at'],  # дата обследования или загрузки
+            'uploaded_at': a['created_at'],
             'found': len(inds),
             'attention': ai.get('attention_count', 0),
             'summary': ai.get('summary', ''),

@@ -670,7 +670,11 @@ body {
 
   <div style="padding:0 20px 8px;font-size:12px;font-weight:600;color:var(--text2);letter-spacing:.5px">ИЛИ ВВЕДИ ВРУЧНУЮ</div>
   <div id="ind-form"></div>
-  <div style="padding:14px 20px 24px">
+  <div style="padding:4px 20px 8px">
+    <div style="font-size:13px;color:var(--text2);margin-bottom:6px">Дата обследования</div>
+    <input type="date" id="manual-analysis-date" style="width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(--border);background:var(--card);color:var(--text1);font-size:15px;box-sizing:border-box">
+  </div>
+  <div style="padding:10px 20px 24px">
     <button class="btn btn-primary" onclick="saveInds()">Сохранить анализы</button>
   </div>
 </div>
@@ -828,7 +832,7 @@ body {
 
 <script>
 // ── DATA ──
-let S = { profile: null, inds: {}, updatedAt: null };
+let S = { profile: null, inds: {}, updatedAt: null, analysisDate: null };
 
 // Мгновенно прячем splash если уже есть профиль (до рендера)
 (function() {
@@ -974,8 +978,9 @@ async function syncLastAnalysis(telegramId) {
   });
   if (Object.keys(newInds).length > 0) {
     S.inds = newInds;
-    S.updatedAt = latest.created_at;
-    S.lastAnalysis = detail; // сохраняем полный AI-разбор
+    S.updatedAt    = latest.created_at;
+    S.analysisDate = latest.date || latest.created_at;
+    S.lastAnalysis = detail;
     save();
   }
 }
@@ -993,7 +998,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Если ID изменился (старый неверный localStorage) — чистим локальный профиль
     if (idChanged) {
-      S = { telegramId: realId, inds: {}, profile: null, updatedAt: null };
+      S = { telegramId: realId, inds: {}, profile: null, updatedAt: null, analysisDate: null };
     } else {
       S.telegramId = realId;
     }
@@ -1151,9 +1156,10 @@ function refreshHome() {
     }
   }
 
-  if (S.updatedAt) {
+  if (S.analysisDate || S.updatedAt) {
+    const displayDate = S.analysisDate || S.updatedAt;
     document.getElementById('h-date').textContent =
-      'Обновлено · '+new Date(S.updatedAt).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});
+      'Анализ от ' + new Date(displayDate).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});
   }
 
   // preview indicators
@@ -1179,7 +1185,7 @@ function refreshHome() {
 
   // docs
   if (filled.length) {
-    const d = S.updatedAt ? new Date(S.updatedAt).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'}) : '—';
+    const d = (S.analysisDate || S.updatedAt) ? new Date(S.analysisDate || S.updatedAt).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'}) : '—';
     document.getElementById('h-docs').innerHTML = `
       <div class="doc-row" onclick="go('analysis')">
         <div class="doc-ic">
@@ -1264,8 +1270,9 @@ async function uploadPdf(input) {
 
     // Заполняем форму
     inds.forEach(ind => { S.inds[ind.key] = ind.value; });
-    S.updatedAt  = new Date().toISOString();
+    S.updatedAt    = new Date().toISOString();
     S.lastAnalysis = data;
+    if (data.analysis_date) S.analysisDate = data.analysis_date;
     save();
 
     progress.style.display = 'none';
@@ -1311,10 +1318,13 @@ async function saveInds() {
     fd.append('gender', p.gender || 'm');
     fd.append('age',    p.age    || 25);
     fd.append('indicators', JSON.stringify(S.inds));
+    const manualDate = document.getElementById('manual-analysis-date')?.value || '';
+    if (manualDate) fd.append('analysis_date', manualDate);
     const res = await fetch(`${API_URL}/api/analyze-manual`, { method:'POST', body:fd });
     const data = await res.json();
     if (data.success) {
       S.lastAnalysis = data;
+      if (data.analysis_date) S.analysisDate = data.analysis_date;
       save();
       showToast('Разбор готов ✓');
       setTimeout(()=>go('analysis'), 800);
@@ -1350,9 +1360,9 @@ function aiText() {
 function refreshAna() {
   const p = S.profile; if(!p) return;
   const sex = p.gender||'m';
-  if (S.updatedAt)
+  if (S.analysisDate || S.updatedAt)
     document.getElementById('ana-date').textContent =
-      new Date(S.updatedAt).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});
+      'Обследование · ' + new Date(S.analysisDate || S.updatedAt).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'});
 
   const filled = INDS.filter(i=>S.inds[i.k]);
   if (!filled.length) {
@@ -1558,7 +1568,7 @@ function refreshShare() {
   const bmi = p.height&&p.weight ? (p.weight/((p.height/100)**2)).toFixed(1) : '—';
   const bad_=filled.filter(i=>status(i,parseFloat(S.inds[i.k]),sex)==='bad');
   const ok_ =filled.filter(i=>status(i,parseFloat(S.inds[i.k]),sex)==='ok');
-  const dt  =S.updatedAt?new Date(S.updatedAt).toLocaleDateString('ru-RU'):'—';
+  const dt  =(S.analysisDate||S.updatedAt)?new Date(S.analysisDate||S.updatedAt).toLocaleDateString('ru-RU'):'—';
   document.getElementById('share-doc').textContent =
 `Сводка здоровья для врача
 Дата: ${dt} · Meridian
