@@ -384,7 +384,16 @@ def ai_parse_pdf(raw_text: str) -> dict:
 {raw_text[:8000]}"""
 
     client = get_client()
-    resp = client.models.generate_content(model='models/gemini-2.5-flash', contents=prompt)
+    import time as _time
+    for attempt in range(3):
+        try:
+            resp = client.models.generate_content(model='models/gemini-2.5-flash', contents=prompt)
+            break
+        except Exception as e:
+            if attempt < 2:
+                _time.sleep(3 * (attempt + 1))
+            else:
+                raise e
     text = resp.text.strip()
     m = _re.search(r'\{[^{}]*\}', text, _re.DOTALL)
     if m:
@@ -584,11 +593,22 @@ async def full_analysis(telegram_id: str):
 
     try:
         from ai_analysis import get_client
+        import time as _time
         loop = asyncio.get_event_loop()
         def call_gemini():
             import re
             client = get_client()
-            resp = client.models.generate_content(model='models/gemini-2.5-flash', contents=prompt)
+            last_err = None
+            for attempt in range(3):
+                try:
+                    resp = client.models.generate_content(model='models/gemini-2.5-flash', contents=prompt)
+                    break
+                except Exception as e:
+                    last_err = e
+                    if attempt < 2:
+                        _time.sleep(3 * (attempt + 1))
+                    else:
+                        raise last_err
             text = resp.text.strip()
             m = re.search(r'\{.*\}', text, re.DOTALL)
             return json.loads(m.group()) if m else json.loads(text)

@@ -2,6 +2,7 @@ from google import genai
 import json
 import re
 import os
+import time
 
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
 _client = None
@@ -239,7 +240,18 @@ def analyze_with_ai(indicators: dict, gender: str, age: int, name: str, raw_text
 
     try:
         client = get_client()
-        response = client.models.generate_content(model='models/gemini-2.5-flash', contents=prompt)
+        # Retry до 3 раз при 503/перегрузке Gemini
+        last_err = None
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(model='models/gemini-2.5-flash', contents=prompt)
+                break
+            except Exception as e:
+                last_err = e
+                if attempt < 2:
+                    time.sleep(3 * (attempt + 1))  # 3с, 6с
+                else:
+                    raise last_err
         text = response.text.strip()
 
         # Извлекаем JSON из ответа
