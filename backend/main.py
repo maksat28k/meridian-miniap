@@ -220,7 +220,7 @@ def get_history_summary(telegram_id: str, limit: int = 3) -> str:
         for a in analyses:
             inds = json.loads(a['indicators'])
             date = a['created_at'][:10]
-            vals = ', '.join(f"{k}={v}" for k, v in list(inds.items())[:8])
+            vals = ', '.join(f"{k}={v}" for k, v in inds.items())  # все показатели, не [:8]
             lines.append(f"  {date}: {vals}")
         return "ИСТОРИЯ ПРЕДЫДУЩИХ АНАЛИЗОВ:\n" + "\n".join(lines)
     except Exception:
@@ -492,7 +492,7 @@ async def full_analysis(telegram_id: str):
     user = dict(user)
 
     analyses = db.execute(
-        "SELECT id, indicators, ai_result, created_at FROM analyses WHERE user_id=? ORDER BY created_at ASC",
+        "SELECT id, indicators, ai_result, created_at, analysis_date FROM analyses WHERE user_id=? ORDER BY created_at ASC",
         (user['id'],)
     ).fetchall()
     db.close()
@@ -506,7 +506,9 @@ async def full_analysis(telegram_id: str):
     for a in analyses:
         inds = json.loads(a['indicators'])
         all_keys.update(inds.keys())
-        timeline.append({'date': a['created_at'][:10], 'indicators': inds})
+        # Используем дату обследования если есть, иначе дату загрузки
+        display_date = (a['analysis_date'] or a['created_at'])[:10]
+        timeline.append({'date': display_date, 'indicators': inds})
 
     # Динамика: сравниваем первый и последний
     from ai_analysis import REFERENCE_RANGES
