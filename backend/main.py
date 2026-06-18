@@ -43,7 +43,19 @@ def init_db():
             age INTEGER,
             height INTEGER,
             weight INTEGER,
+            plan TEXT DEFAULT 'free',
+            paid_at TEXT,
+            plan_expires_at TEXT,
             created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            yookassa_id TEXT UNIQUE,
+            amount REAL,
+            status TEXT DEFAULT 'pending',
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES users(id)
         );
         CREATE TABLE IF NOT EXISTS analyses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,14 +73,38 @@ def init_db():
 
 init_db()
 
-# Миграция: добавляем analysis_date если колонки нет
-try:
-    _mdb = get_db()
-    _mdb.execute("ALTER TABLE analyses ADD COLUMN analysis_date TEXT")
-    _mdb.commit()
-    _mdb.close()
-except Exception:
-    pass  # колонка уже существует
+# Миграции для существующих БД
+for _migration in [
+    "ALTER TABLE analyses ADD COLUMN analysis_date TEXT",
+    "ALTER TABLE users ADD COLUMN plan TEXT DEFAULT 'free'",
+    "ALTER TABLE users ADD COLUMN paid_at TEXT",
+    "ALTER TABLE users ADD COLUMN plan_expires_at TEXT",
+]:
+    try:
+        _mdb = get_db()
+        _mdb.execute(_migration)
+        _mdb.commit()
+        _mdb.close()
+    except Exception:
+        pass
+
+YOOKASSA_SHOP_ID  = os.environ.get("YOOKASSA_SHOP_ID", "")
+YOOKASSA_SECRET   = os.environ.get("YOOKASSA_SECRET_KEY", "")
+PLAN_DAYS         = 5  # дней доступа после оплаты
+PLAN_PRICE        = 490.00
+
+def user_has_access(telegram_id: str) -> bool:
+    """Проверяет есть ли активный оплаченный доступ у пользователя."""
+    db = get_db()
+    user = db.execute("SELECT plan, plan_expires_at FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
+    db.close()
+    if not user:
+        return False
+    if user['plan'] == 'free' or not user['plan_expires_at']:
+        return False
+    from datetime import timezone
+    expires = datetime.fromisoformat(user['plan_expires_at'])
+    return datetime.now() < expires
 
 async def notify_admin(text: str):
     if not BOT_TOKEN or not ADMIN_ID:
@@ -227,6 +263,132 @@ def get_history_summary(telegram_id: str, limit: int = 3) -> str:
         return ""
 
 # ── ROUTES ──
+# ── PAYMENT ──
+
+@app.post("/api/payment/create")
+async def create_payment(telegram_id: str = Form(...)):
+    """Создаёт платёж в ЮКасса и возвращает ссылку на оплату."""
+    if not YOOKASSA_SHOP_ID or not YOOKASSA_SECRET:
+        raise HTTPException(500, "Оплата временно недоступна")
+
+    if user_has_access(telegram_id):
+        return {"already_paid": True, "message": "У тебя уже активен доступ"}
+
+    import uuid, httpx
+    idempotency_key = str(uuid.uuid4())
+    return_url = f"{WEBAPP_URL}?paid=1"
+
+    payload = {
+        "amount": {"value": f"{PLAN_PRICE:.2f}", "currency": "RUB"},
+        "confirmation": {"type": "redirect", "return_url": return_url},
+        "capture": True,
+        "description": f"Meridian — полный разбор анализов на 5 дней (ID: {telegram_id})",
+        "metadata": {"telegram_id": telegram_id},
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                "https://api.yookassa.ru/v3/payments",
+                json=payload,
+                auth=(YOOKASSA_SHOP_ID, YOOKASSA_SECRET),
+                headers={"Idempotence-Key": idempotency_key},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        payment_id = data["id"]
+        confirm_url = data["confirmation"]["confirmation_url"]
+
+        # Сохраняем платёж в БД
+        db = get_db()
+        user = db.execute("SELECT id FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
+        if user:
+            db.execute(
+                "INSERT OR IGNORE INTO payments (user_id, yookassa_id, amount, status) VALUES (?,?,?,?)",
+                (user['id'], payment_id, PLAN_PRICE, "pending")
+            )
+            db.commit()
+        db.close()
+
+        return {"payment_url": confirm_url, "payment_id": payment_id}
+
+    except Exception as e:
+        print(f"YooKassa create error: {e}")
+        raise HTTPException(500, "Не удалось создать платёж. Попробуй позже.")
+
+
+@app.post("/api/payment/webhook")
+async def payment_webhook(request: Request):
+    """Принимает уведомления от ЮКасса об успешной оплате."""
+    try:
+        data = await request.json()
+        event = data.get("event", "")
+        obj   = data.get("object", {})
+
+        if event != "payment.succeeded":
+            return {"ok": True}
+
+        payment_id  = obj.get("id")
+        metadata    = obj.get("metadata", {})
+        telegram_id = metadata.get("telegram_id")
+
+        if not telegram_id or not payment_id:
+            return {"ok": True}
+
+        # Активируем доступ на 5 дней
+        from datetime import timedelta
+        now     = datetime.now()
+        expires = now + timedelta(days=PLAN_DAYS)
+
+        db = get_db()
+        db.execute(
+            "UPDATE users SET plan='paid', paid_at=?, plan_expires_at=? WHERE telegram_id=?",
+            (now.isoformat(), expires.isoformat(), telegram_id)
+        )
+        db.execute(
+            "UPDATE payments SET status='succeeded' WHERE yookassa_id=?",
+            (payment_id,)
+        )
+        db.commit()
+        user = db.execute("SELECT name FROM users WHERE telegram_id=?", (telegram_id,)).fetchone()
+        db.close()
+
+        name = user['name'] if user else "аноним"
+        await notify_admin(
+            f"💳 <b>Оплата получена!</b>\n"
+            f"👤 {name} ({telegram_id})\n"
+            f"💰 {PLAN_PRICE:.0f} ₽\n"
+            f"📅 Доступ до: {expires.strftime('%d.%m.%Y %H:%M')}"
+        )
+
+    except Exception as e:
+        print(f"Webhook error: {e}")
+
+    return {"ok": True}
+
+
+@app.get("/api/payment/status/{telegram_id}")
+def payment_status(telegram_id: str):
+    """Возвращает текущий статус доступа пользователя."""
+    db = get_db()
+    user = db.execute(
+        "SELECT plan, paid_at, plan_expires_at FROM users WHERE telegram_id=?",
+        (telegram_id,)
+    ).fetchone()
+    db.close()
+    if not user:
+        return {"plan": "free", "has_access": False}
+
+    has_access = user_has_access(telegram_id)
+    return {
+        "plan": user['plan'],
+        "has_access": has_access,
+        "expires_at": user['plan_expires_at'],
+        "paid_at": user['paid_at'],
+    }
+
 
 @app.get("/")
 def root():
